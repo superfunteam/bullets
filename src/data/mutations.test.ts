@@ -20,6 +20,7 @@ import {
 import { pending } from './outbox';
 import { applyLocal } from './mutations';
 import { seedIfEmpty } from './seed';
+import { today, weekStart } from '../lib/dates';
 import { hasAnswered, responseOf, type Bullet, type Huddle, type Shot } from './types';
 
 const bulletOf = async (id: string) =>
@@ -281,5 +282,39 @@ describe('seeding', () => {
     const second = (await db.clients.toArray()).map(c => c.id).sort();
 
     expect(second).toEqual(first);
+  });
+});
+
+describe('capturing with a committing horizon', () => {
+  it('puts a NOW bullet on today, so it is not invisible everywhere', async () => {
+    // The bug: every calendar view renders shots, so a bullet with horizon
+    // 'now' and no shot appeared in Today, Week and Shelf alike — which is to
+    // say nowhere at all. It saved, it synced, and you could never find it.
+    const id = await createBullet({ title: 'Urgent thing', horizon: 'now' });
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].scope).toBe('day');
+    expect(shots[0].date).toBe(today());
+  });
+
+  it('puts a NEXT bullet into this week', async () => {
+    const id = await createBullet({ title: 'This week thing', horizon: 'next' });
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].scope).toBe('week');
+    expect(shots[0].date).toBe(weekStart(today()));
+  });
+
+  it('leaves uncommitted horizons off the calendar', async () => {
+    for (const h of ['soon', 'later', 'shelf'] as const) {
+      const id = await createBullet({ title: `A ${h} thing`, horizon: h });
+      expect(await shotsOf(id)).toHaveLength(0);
+    }
+  });
+
+  it('does not put a sub-bullet on a day of its own', async () => {
+    const parent = await createBullet({ title: 'Parent', horizon: 'shelf' });
+    const child = await createBullet({ title: 'Child', horizon: 'now', parentId: parent });
+    expect(await shotsOf(child)).toHaveLength(0);
   });
 });

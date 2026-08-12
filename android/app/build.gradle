@@ -1,6 +1,21 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+// Single source of truth for the version: package.json.
+//
+// These were hardcoded at 1.0 / 1 and never moved, so every release told
+// Android it was the same build. The device reported "1.0" no matter what was
+// installed, and because versionCode never increased the OS could not tell a
+// newer APK from a reinstall. The in-app updater compares package.json against
+// the release tag, so this has to track it exactly.
+def pkgVersion = new groovy.json.JsonSlurper()
+        .parse(file('../../package.json')).version
+def semver = pkgVersion.toString().tokenize('.')
+// 1.0.6 -> 10006. Monotonic while minor and patch stay under 100.
+def numericVersion = semver[0].toInteger() * 10000 +
+        semver[1].toInteger() * 100 +
+        semver[2].toInteger()
+
 // Release signing comes from the environment so CI can inject it and a
 // local build needs nothing. assembleRelease with no signing config does
 // NOT fail -- it emits an uninstallable unsigned APK -- so guard on the
@@ -19,8 +34,8 @@ android {
         applicationId "team.superfun.bullets"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode numericVersion
+        versionName pkgVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

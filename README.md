@@ -93,6 +93,10 @@ Netlify env var. Nothing else in the stack changes.
 | `npm run build` | Production build to `dist/` |
 | `npm run cap:sync` | Build, then copy into the Android project |
 
+> **Working on this with an AI agent?** Point it at [AGENTS.md](AGENTS.md) —
+> it lists the traps that have already bitten this codebase, most of which are
+> invisible to a typecheck.
+
 ## How it's put together
 
 ```
@@ -134,8 +138,9 @@ It never interprets an op's value. That's the extensibility guarantee: adding an
 entity type or a field needs zero backend changes and zero migrations, which
 matters because we're going to change this a lot.
 
-Sync pace adapts: 1.5s while a live huddle board is open, 15s in normal use,
-immediate on focus/resume/reconnect. Your own edits never wait on any of it.
+Sync pace adapts: 1.5s while a live huddle board is open, 4s in normal use, and a
+local write pushes within 250ms so the other person sees it in about a second.
+Your own edits never wait on any of it.
 
 See [the design spec](docs/superpowers/specs/2026-08-12-bullets-design.md) for the
 full reasoning, and [docs/architecture.md](docs/architecture.md) for how to extend it.

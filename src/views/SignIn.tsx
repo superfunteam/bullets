@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { settle, snap, stagger } from '../design/springs';
 import { signIn } from '../sync/auth';
 import { PEOPLE, personName, type Person } from '../data/types';
+import { currentVersion } from '../native/update';
 
 /**
  * Two faces. Tap yours.
@@ -68,6 +69,10 @@ export function SignIn({ onDone }: { onDone: (p: Person) => void }) {
 
         <p className="meta mt-8 text-center text-[var(--ink-3)]">
           You can switch later. Everything is shared either way.
+        </p>
+
+        <p className="meta mt-3 text-center text-[var(--ink-3)] opacity-70">
+          v<span className="numeral">{currentVersion()}</span>
         </p>
       </motion.div>
     </div>
