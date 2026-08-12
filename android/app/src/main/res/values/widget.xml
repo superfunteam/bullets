@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The widget can't read our CSS tokens, so the palette is mirrored here.
+         Warm neutrals to match the app rather than launcher-default grey. -->
+    <color name="widget_bg">#FBF9F6</color>
+    <color name="widget_ink">#2B2724</color>
+    <color name="widget_ink_2">#736C64</color>
+    <color name="widget_button_bg">#2B2724</color>
+    <color name="widget_button_ink">#FBF9F6</color>
+
+    <attr name="backgroundRadius" format="dimension" />
+    <string name="widget_shots_today">shots today</string>
+</resources>

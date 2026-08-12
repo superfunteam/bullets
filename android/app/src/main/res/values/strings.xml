@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bullets</string>
+    <string name="title_activity_main">Bullets</string>
+    <string name="package_name">team.superfun.bullets</string>
+    <string name="custom_url_scheme">bullets</string>
+    <string name="widget_description">Shots for today, and a quick way to add one.</string>
+    <string name="widget_add">Add a bullet</string>
+</resources>

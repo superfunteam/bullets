@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ hands us the launcher's own corner radius, which OEMs vary
+         by up to 16dp. Matching it is what makes the widget look native. -->
+    <style name="BulletsWidgetTheme" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="backgroundRadius">@android:dimen/system_app_widget_background_radius</item>
+    </style>
+</resources>
