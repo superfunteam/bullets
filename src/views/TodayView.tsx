@@ -136,7 +136,7 @@ export function TodayView({
       {hit.length > 0 && (
         <section className="mt-9">
           <h2 className="meta mb-3 px-2 text-[var(--ink-3)] uppercase">
-            Hit · <span className="numeral">{hit.length}</span>
+            Done · <span className="numeral">{hit.length}</span>
           </h2>
           <div className="space-y-3">
             <AnimatePresence mode="popLayout" initial={false}>

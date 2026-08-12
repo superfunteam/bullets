@@ -80,8 +80,12 @@ export function KindGlyph({ kind, size = 16 }: { kind: BulletKind; size?: number
 export { KIND_GLYPH };
 
 /**
- * Target tension, rendered. This is the one place saturated semantic color is
- * allowed, which is precisely why it registers when it shows up.
+ * Target tension, rendered. The one place saturated semantic color is allowed,
+ * which is precisely why it registers when it shows up.
+ *
+ * Plain words on purpose. This badge reports a state you have to act on, and
+ * "Wide" — however well it fit the target-shooting language — is not something
+ * anyone can guess. Flavour belongs on the nouns, not on a warning.
  */
 export function TensionBadge({
   level,
@@ -101,7 +105,7 @@ export function TensionBadge({
         fontVariationSettings: "'wght' 750",
       }}
     >
-      {incoming ? `Incoming · ${daysLeft}d` : 'Wide'}
+      {incoming ? `Due in ${daysLeft}d` : 'Late'}
     </span>
   );
 }

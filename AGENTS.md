@@ -45,10 +45,18 @@ Bullets keeps them separate:
 `tensionOf()` in `data/selectors.ts` compares them. That function is the
 product. Be careful with it.
 
-**Vocabulary is not decoration.** A *shot* is one go at a bullet on a day or
-week. Completing is a **hit**. A passed target is **wide**, never "overdue".
-Dropping is **calling it off**, never "deleting". The register is target
-shooting, not firearms. Match it in UI copy.
+**Vocabulary rule: flavour the nouns, plain-speak the verbs.**
+
+Nouns are named once and learned: a *shot* is one go at a bullet on a day or
+week, a *target* is the deadline, and the *Pull* is the migration ritual. Keep
+those.
+
+Buttons and status labels are different. If someone has to pause and work out
+whether a control deletes their work, the wording has failed — so actions say
+exactly what they do: **Delete**, **Mark done**, **Do today**, **Take off
+today**. This was learned the hard way: "Call it off" read as *unschedule*
+rather than *delete*, and "Wide" was unguessable on a badge whose whole job is
+warning you.
 
 ---
 

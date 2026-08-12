@@ -4,6 +4,9 @@ import {
   addHuddleItem,
   callHuddle,
   callOff,
+  completeBullet,
+  deleteBullet,
+  reopenBullet,
   completeShot,
   createBullet,
   decideItem,
@@ -316,5 +319,81 @@ describe('capturing with a committing horizon', () => {
     const parent = await createBullet({ title: 'Parent', horizon: 'shelf' });
     const child = await createBullet({ title: 'Child', horizon: 'now', parentId: parent });
     expect(await shotsOf(child)).toHaveLength(0);
+  });
+});
+
+describe('scheduling is idempotent', () => {
+  it('does not create a second shot for the same bullet on the same day', async () => {
+    const id = await createBullet({ title: 'Do it', horizon: 'shelf' });
+    await pullToDay(id, '2026-08-12');
+    await pullToDay(id, '2026-08-12');
+    // Two shots rendered as the task appearing twice — indistinguishable from
+    // having accidentally created a duplicate task.
+    expect(await shotsOf(id)).toHaveLength(1);
+  });
+
+  it('merges a second partial claim into the existing shot', async () => {
+    const id = await createBullet({ title: 'Posts', count: { total: 20, unit: 'posts' } });
+    await pullToDay(id, '2026-08-12', 3);
+    await pullToDay(id, '2026-08-12', 5);
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].amount).toBe(8);
+  });
+
+  it('still allows the same bullet on two different days', async () => {
+    const id = await createBullet({ title: 'Posts', count: { total: 20, unit: 'posts' } });
+    await pullToDay(id, '2026-08-12', 3);
+    await pullToDay(id, '2026-08-13', 5);
+    expect(await shotsOf(id)).toHaveLength(2);
+  });
+});
+
+describe('completing a bullet', () => {
+  it('closes its open shots so it stops rendering as open work', async () => {
+    const id = await createBullet({ title: 'X', horizon: 'shelf' });
+    await pullToDay(id, '2026-08-12');
+    await completeBullet(id);
+    expect((await shotsOf(id)).every(s => s.state === 'done')).toBe(true);
+  });
+
+  it('rolls up to the parent when the last piece is done', async () => {
+    const parent = await createBullet({ title: 'Five pieces', horizon: 'shelf' });
+    const kids = [];
+    for (let i = 0; i < 5; i++) {
+      kids.push(await createBullet({ title: `Piece ${i}`, parentId: parent }));
+    }
+    for (const k of kids.slice(0, 4)) await completeBullet(k);
+    expect((await bulletOf(parent)).state).toBe('open');
+
+    await completeBullet(kids[4]);
+    expect((await bulletOf(parent)).state).toBe('done');
+  });
+
+  it('reopens the parent when a finished piece is unchecked', async () => {
+    const parent = await createBullet({ title: 'Two pieces', horizon: 'shelf' });
+    const a = await createBullet({ title: 'A', parentId: parent });
+    const b = await createBullet({ title: 'B', parentId: parent });
+    await completeBullet(a);
+    await completeBullet(b);
+    expect((await bulletOf(parent)).state).toBe('done');
+
+    await reopenBullet(b);
+    expect((await bulletOf(parent)).state).toBe('open');
+  });
+});
+
+describe('deleting a bullet', () => {
+  it('takes its children and shots with it', async () => {
+    const parent = await createBullet({ title: 'Parent', horizon: 'shelf' });
+    const child = await createBullet({ title: 'Child', parentId: parent });
+    await pullToDay(parent, '2026-08-12');
+
+    await deleteBullet(parent);
+
+    expect((await db.bullets.get(parent))?.deletedAt).toBeTruthy();
+    expect((await db.bullets.get(child))?.deletedAt).toBeTruthy();
+    // An orphaned shot would keep rendering a card for a bullet that is gone.
+    expect(await shotsOf(parent)).toHaveLength(0);
   });
 });

@@ -6,7 +6,16 @@ import { settle, snap, zoom } from '../design/springs';
 import { useDismissDrag } from '../design/useDismissDrag';
 import { progressOf, tensionOf } from '../data/selectors';
 import { useBullet, useChildren, useClients, useShotsFor } from '../data/store';
-import { callOff, createBullet, pullToDay, setHorizon, shelve } from '../data/mutations';
+import {
+  completeBullet,
+  createBullet,
+  deleteBullet,
+  pullToDay,
+  reopenBullet,
+  setHorizon,
+  shelve,
+  unpull,
+} from '../data/mutations';
 import { HORIZONS, type Horizon } from '../data/types';
 import { relativeDay, today as todayFn } from '../lib/dates';
 
@@ -33,6 +42,7 @@ export function BulletZoom({
   const clients = useClients();
   const { controls, scrollRef, handleProps, contentProps } = useDismissDrag();
   const [adding, setAdding] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [childTitle, setChildTitle] = useState('');
 
   if (!bullet) return null;
@@ -41,6 +51,8 @@ export function BulletZoom({
   const { done, total } = progressOf(bullet, shots);
   const tension = tensionOf(bullet, shots, today);
   const liveShots = shots.filter((s) => s.state !== 'done');
+  // Already on today? Then offer to finish or remove it, never to add it again.
+  const onToday = shots.find(s => s.scope === 'day' && s.date === today && s.state === 'open');
 
   const addChild = async () => {
     const t = childTitle.trim();
@@ -200,8 +212,54 @@ export function BulletZoom({
               {children.length > 0 ? (
                 <div className="mt-3 space-y-2">
                   {children.map((child) => (
-                    <Slab key={child.id} tone="quiet" onClick={() => onZoom(child.id)}>
-                      <div className="flex items-center gap-3 px-5 py-4">
+                    <Slab key={child.id} tone="quiet">
+                      <div className="flex items-center gap-1 py-1 pr-3 pl-2">
+                        {/* Checking a piece off has to be its own target. Tapping
+                            the row still zooms in, so the two cannot share one. */}
+                        <button
+                          type="button"
+                          aria-label={
+                            child.state === 'done'
+                              ? `Mark ${child.title} not done`
+                              : `Mark ${child.title} done`
+                          }
+                          onClick={() =>
+                            void (child.state === 'done'
+                              ? reopenBullet(child.id)
+                              : completeBullet(child.id))
+                          }
+                          className="flex h-[var(--tap)] w-[var(--tap)] shrink-0
+                                     items-center justify-center"
+                        >
+                          <motion.span
+                            whileTap={{ scale: 0.85 }}
+                            transition={snap}
+                            className="flex h-7 w-7 items-center justify-center rounded-full border-2"
+                            style={{
+                              borderColor:
+                                child.state === 'done' ? 'var(--hit)' : 'var(--line-strong)',
+                              background: child.state === 'done' ? 'var(--hit)' : 'transparent',
+                            }}
+                          >
+                            {child.state === 'done' && (
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                                <path
+                                  d="M5 12.5l4.5 4.5L19 7.5"
+                                  stroke="white"
+                                  strokeWidth="3"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
+                          </motion.span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onZoom(child.id)}
+                          className="flex flex-1 items-center gap-3 py-3 text-left"
+                        >
                         <span
                           className="text-[var(--ink-3)]"
                           style={{
@@ -220,6 +278,7 @@ export function BulletZoom({
                         >
                           {child.title}
                         </span>
+                        </button>
                       </div>
                     </Slab>
                   ))}
@@ -227,7 +286,7 @@ export function BulletZoom({
               ) : (
                 !adding && (
                   <p className="meta mt-3 text-[var(--ink-3)]">
-                    Nothing inside yet. Break it down if it's too big to take in one shot.
+                    Nothing inside yet. Break it into pieces if it's too big to do in one go.
                   </p>
                 )
               )}
@@ -272,21 +331,73 @@ export function BulletZoom({
               </div>
             </section>
 
-            <div className="mt-8 space-y-3">
-              {bullet.state === 'open' && (
-                <BigButton onClick={() => void pullToDay(bullet.id, today)}>
-                  Take a shot today
+            {/*
+              Plain verbs on purpose.
+              "Shot", "target" and "the Pull" are nouns you learn once. A button
+              is different: if you have to pause and work out whether it deletes
+              your work, the wording has failed. So the flavour lives in what
+              things are called, and the actions say exactly what they do.
+            */}
+            <div className="mt-9 space-y-3">
+              {bullet.state === 'done' ? (
+                <BigButton tone="quiet" onClick={() => void reopenBullet(bullet.id)}>
+                  Reopen
+                </BigButton>
+              ) : (
+                <>
+                  <BigButton
+                    tone="hit"
+                    onClick={() => {
+                      void completeBullet(bullet.id);
+                      onClose();
+                    }}
+                  >
+                    {children.length > 0 ? 'Mark the whole thing done' : 'Mark done'}
+                  </BigButton>
+
+                  {onToday ? (
+                    <BigButton tone="quiet" onClick={() => void unpull(onToday.id)}>
+                      Take off today
+                    </BigButton>
+                  ) : (
+                    <BigButton
+                      tone="quiet"
+                      onClick={() => void pullToDay(bullet.id, today)}
+                    >
+                      Do today
+                    </BigButton>
+                  )}
+                </>
+              )}
+
+              {confirmDelete ? (
+                <div className="rounded-[var(--r-md)] border border-[var(--wide)] p-3">
+                  <p className="meta mb-3 px-1 text-[var(--ink-2)]">
+                    Delete this bullet{children.length > 0
+                      ? ` and its ${children.length} piece${children.length === 1 ? '' : 's'}`
+                      : ''}
+                    ? This can't be undone from here.
+                  </p>
+                  <div className="flex gap-2.5">
+                    <BigButton tone="quiet" onClick={() => setConfirmDelete(false)}>
+                      Keep it
+                    </BigButton>
+                    <BigButton
+                      tone="wide"
+                      onClick={() => {
+                        void deleteBullet(bullet.id);
+                        onClose();
+                      }}
+                    >
+                      Delete
+                    </BigButton>
+                  </div>
+                </div>
+              ) : (
+                <BigButton tone="quiet" onClick={() => setConfirmDelete(true)}>
+                  Delete
                 </BigButton>
               )}
-              <BigButton
-                tone="quiet"
-                onClick={() => {
-                  void callOff(bullet.id);
-                  onClose();
-                }}
-              >
-                Call it off
-              </BigButton>
             </div>
           </div>
         </div>

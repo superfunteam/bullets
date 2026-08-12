@@ -330,7 +330,7 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
       {!showSummary && !loading && (
         <div className="mx-auto flex w-full max-w-md gap-2.5 px-5">
           <DeckButton
-            label={weekly ? 'Push out' : 'Not today'}
+            label={weekly ? 'Later' : 'Not today'}
             sub={
               weekly && top && PUSHED_OUT[top.bullet.horizon] !== top.bullet.horizon
                 ? `to ${HORIZON_META[PUSHED_OUT[top.bullet.horizon]].label}`
@@ -340,7 +340,13 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
             onClick={() => commit('left')}
           />
           <DeckButton label="Shelve" disabled={!top} onClick={() => commit('up')} />
-          <DeckButton label="Pull in" tone="hit" grow disabled={!top} onClick={() => commit('right')} />
+          <DeckButton
+            label={weekly ? 'This week' : 'Do today'}
+            tone="hit"
+            grow
+            disabled={!top}
+            onClick={() => commit('right')}
+          />
         </div>
       )}
 
@@ -389,7 +395,7 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
                 <BigButton tone="quiet" onClick={() => setClaim(null)}>
                   Back
                 </BigButton>
-                <BigButton onClick={confirmClaim}>Pull in</BigButton>
+                <BigButton onClick={confirmClaim}>{weekly ? 'Add to this week' : 'Add to today'}</BigButton>
               </div>
             </motion.div>
           </motion.div>
@@ -483,7 +489,8 @@ function PullCard({
                   pull: pullStamp,
                   push: pushStamp,
                   shelve: shelveStamp,
-                  pushLabel: weekly ? 'Push out' : 'Not today',
+                  pushLabel: weekly ? 'Later' : 'Not today',
+                  pullLabel: weekly ? 'This week' : 'Today',
                 }
               : undefined
           }
@@ -515,6 +522,7 @@ function CardFace({
     push: MotionValue<number>;
     shelve: MotionValue<number>;
     pushLabel: string;
+    pullLabel: string;
   };
 }) {
   const { bullet, client, tension } = item;
@@ -585,7 +593,13 @@ function CardFace({
 
       {stamps && (
         <>
-          <Stamp label="Pull in" color="var(--hit)" tilt={-6} opacity={stamps.pull} className="top-6 left-6" />
+          <Stamp
+            label={stamps.pullLabel}
+            color="var(--hit)"
+            tilt={-6}
+            opacity={stamps.pull}
+            className="top-6 left-6"
+          />
           <Stamp
             label={stamps.pushLabel}
             color="var(--ink-3)"
