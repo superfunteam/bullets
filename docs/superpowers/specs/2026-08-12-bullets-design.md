@@ -393,19 +393,36 @@ Clark can still respond, and the response is expressive rather than binary:
 
 ### Notifications
 
-Two mechanisms, deliberately different, neither requiring Firebase:
+> **Revised 2026-08-12 during implementation.** This section originally proposed a
+> `WorkManager` background-sync job as the delivery mechanism for huddle requests, on the
+> theory that it avoided a Firebase dependency. Research during the Android build showed that
+> plan does not survive contact with the platform, so the design changed. The original text is
+> superseded by what follows.
 
-**"Angie requested a huddle"** — delivered by the Android `WorkManager` job that already runs
-sync every 15 minutes. It fires a native notification with **In / Nudge / Can't** as action
-buttons directly in the shade, so responding never requires opening the app. Worst-case
-latency is 15 minutes, which for a next-day meeting is irrelevant.
+**"Huddle starts in 30 minutes" — locally scheduled, and completely reliable.** Fired by
+Android's `AlarmManager` the moment the huddle syncs down. Exact to the second, survives app
+kill, survives reboot, works in airplane mode, needs no network and no third-party account.
+This is the path that actually delivers the advance warning Clark needs, and it has no moving
+parts. It works today with zero setup.
 
-**"Huddle starts in 30 minutes"** — a locally scheduled notification, fired by the OS at the
-exact moment, scheduled the instant the huddle syncs down. Zero network dependency, zero
-latency, works in airplane mode. This is the reliability that actually matters for advance
-warning, and it's the one path with no moving parts.
+**"Angie called a huddle" — needs Firebase Cloud Messaging.** Background polling genuinely
+cannot do this job, and the reasons are structural rather than a matter of implementation
+quality:
 
-FCM can be added later for instant delivery without changing anything above.
+- Doze mode **suspends network access** and **blocks `WorkManager` outright**.
+- `WorkManager`'s minimum repeat interval is 15 minutes regardless.
+- OEM battery managers on Xiaomi, Huawei, Samsung and others kill background work more
+  aggressively still.
+
+FCM survives all of this because Play Services is exempt by construction. Nothing we write
+from inside an app can be.
+
+**Resolution:** ship the local-reminder backbone, which is the reliable half and the half that
+matters most, and wire FCM so it activates on a file drop. Capacitor's Android template
+already carries the `google-services` classpath and applies the plugin conditionally on
+`google-services.json` existing, so enabling instant push is a ~10 minute setup with **no code
+change and no rework** — see `docs/firebase-setup.md`. Until then, a new huddle surfaces at
+the next scheduled reminder or when the app is next opened.
 
 ### The live board
 

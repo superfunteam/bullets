@@ -53,12 +53,45 @@ npm install
 npm run dev
 ```
 
-Then set two environment variables in Netlify (or a local `.env`):
+That's enough to use the app on one device — it's local-first, so everything works offline
+against IndexedDB. Syncing between the two of you needs the three steps below.
+
+### Going live on Netlify
+
+Not done yet, deliberately: it creates a public URL and claims a site name on your account,
+which is your call to make. Three steps, once.
+
+**1. Create and link the site.** Either connect the GitHub repo from the Netlify dashboard
+(recommended — you get automatic deploys on every push to `main`), or from here:
 
 ```bash
-netlify env:set BULLETS_PASSPHRASE "the shared phrase"
+netlify init
+```
+
+Build command `npm run build`, publish directory `dist` — Netlify auto-detects both.
+
+**2. Provision the database.** Note this is `netlify database`, not the retired `netlify db`
+beta:
+
+```bash
+netlify database init
+```
+
+This exposes `NETLIFY_DB_URL` to the functions and applies
+`netlify/database/migrations/0001_ops.sql` on the next production deploy.
+
+**3. Set the two secrets.** Without these, `/api/auth` returns 500 and neither of you can sign in:
+
+```bash
+netlify env:set BULLETS_PASSPHRASE "the shared phrase you two agree on"
 netlify env:set BULLETS_SECRET "$(openssl rand -hex 32)"
 ```
+
+`BULLETS_SECRET` signs the bearer tokens — generate it, don't invent one. Changing it later
+signs everyone out, which is also how you'd revoke access.
+
+Nothing needs setting up for AI. The Netlify AI Gateway injects `ANTHROPIC_API_KEY` and
+`ANTHROPIC_BASE_URL` into the functions automatically and bills through Netlify credits.
 
 | Command | Does |
 |---|---|
