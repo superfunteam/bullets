@@ -31,6 +31,7 @@ export function CaptureSheet({
   const [deadline, setDeadline] = useState<string | undefined>();
   const [total, setTotal] = useState<number | undefined>();
   const [unit, setUnit] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -40,13 +41,17 @@ export function CaptureSheet({
     setDeadline(undefined);
     setTotal(undefined);
     setUnit('');
+    setSaving(false);
     const t = setTimeout(() => inputRef.current?.focus(), 220);
     return () => clearTimeout(t);
   }, [open]);
 
   const save = async () => {
     const t = title.trim();
-    if (!t) return;
+    // createBullet awaits a Dexie transaction, so a double tap on a slow
+    // device got through twice and created two bullets.
+    if (!t || saving) return;
+    setSaving(true);
     await createBullet({
       title: t,
       horizon,
@@ -57,6 +62,7 @@ export function CaptureSheet({
     // A bullet captured with the default horizon lands on the Shelf, which is
     // collapsed by client — easy to save something and never see it again.
     onSaved?.({ title: t, horizon });
+    setSaving(false);
     onClose();
   };
 
@@ -155,7 +161,7 @@ export function CaptureSheet({
           </div>
         </Field>
 
-        <BigButton onClick={save} disabled={!title.trim()}>
+        <BigButton onClick={save} disabled={!title.trim() || saving}>
           Add bullet
         </BigButton>
       </div>

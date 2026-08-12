@@ -4,7 +4,7 @@ import { BigButton, ClientDot, HorizonChip, TensionBadge } from '../design/bits'
 import { Slab } from '../design/Slab';
 import { settle, snap, zoom } from '../design/springs';
 import { useDismissDrag } from '../design/useDismissDrag';
-import { progressOf, tensionOf } from '../data/selectors';
+import { progressOf, tensionOf, unclaimedOf } from '../data/selectors';
 import { useBullet, useChildren, useClients, useShotsFor } from '../data/store';
 import {
   completeBullet,
@@ -12,8 +12,7 @@ import {
   deleteBullet,
   pullToDay,
   reopenBullet,
-  setHorizon,
-  shelve,
+  moveToHorizon,
   unpull,
 } from '../data/mutations';
 import { HORIZONS, type Horizon } from '../data/types';
@@ -321,9 +320,9 @@ export function BulletZoom({
                     type="button"
                     whileTap={{ scale: 0.94 }}
                     transition={snap}
-                    onClick={() =>
-                      void (h === 'shelf' ? shelve(bullet.id) : setHorizon(bullet.id, h))
-                    }
+                    // moveToHorizon, never setHorizon: a committing horizon
+                    // with no shot leaves the bullet in no view at all.
+                    onClick={() => void moveToHorizon(bullet.id, h)}
                   >
                     <HorizonChip horizon={h} size="lg" active={bullet.horizon === h} />
                   </motion.button>
@@ -356,13 +355,31 @@ export function BulletZoom({
                   </BigButton>
 
                   {onToday ? (
-                    <BigButton tone="quiet" onClick={() => void unpull(onToday.id)}>
+                    <BigButton
+                      tone="quiet"
+                      onClick={() => {
+                        void unpull(onToday.id);
+                        // Otherwise it still claims NOW with nothing on the
+                        // calendar, which is the strand-it-nowhere state again.
+                        void moveToHorizon(bullet.id, 'soon');
+                      }}
+                    >
                       Take off today
                     </BigButton>
                   ) : (
                     <BigButton
                       tone="quiet"
-                      onClick={() => void pullToDay(bullet.id, today)}
+                      onClick={() =>
+                        void pullToDay(
+                          bullet.id,
+                          today,
+                          // A counted bullet with no amount scores as 1, so
+                          // "do today" on 20 posts used to claim a single post
+                          // and look identical to claiming the lot.
+                          bullet.count ? Math.max(1, unclaimedOf(bullet, shots, 'day')) : undefined,
+                        )
+                      }
+                      disabled={Boolean(bullet.count) && unclaimedOf(bullet, shots, 'day') <= 0}
                     >
                       Do today
                     </BigButton>

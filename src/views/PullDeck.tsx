@@ -10,7 +10,7 @@ import { Slab } from '../design/Slab';
 import { Stepper } from '../design/Stepper';
 import { BigButton, ClientDot, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap } from '../design/springs';
-import { pullToDay, pullToWeek, setHorizon, shelve } from '../data/mutations';
+import { moveToHorizon, pullToDay, pullToWeek, shelve } from '../data/mutations';
 import { byUrgency, tensionOf, unclaimedOf, type Tension } from '../data/selectors';
 import {
   useAllShots,
@@ -116,9 +116,11 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
     const pool = new Map<string, Bullet>();
 
     if (weekly) {
-      for (const b of shelf) pool.set(b.id, b);
+      for (const b of shelf) if (!b.parentId) pool.set(b.id, b);
       for (const b of allBullets) {
-        if (b.state !== 'open') continue;
+        // Sub-bullets live inside their parent; offering one as a standalone
+        // card would schedule a piece of work on a day of its own.
+        if (b.state !== 'open' || b.parentId) continue;
         const near = b.deadline !== undefined && daysUntil(today, b.deadline) <= NEAR_TARGET_DAYS;
         if (b.horizon === 'soon' || near) pool.set(b.id, b);
       }
@@ -187,13 +189,20 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
         setClaim({ item: top, amount: defaultClaim(topUnclaimed, weekly) });
         return;
       }
-      const amount = bullet.count ? Math.max(1, topUnclaimed) : undefined;
-      void pullIn(bullet.id, amount);
-      setPulled(p => [...p, { id: bullet.id, title: bullet.title, amount }]);
+      // Fully claimed already: committing here would write a phantom one-unit
+      // shot and quietly overshoot the total. Let the card leave the deck
+      // without writing anything.
+      if (!bullet.count || topUnclaimed > 0) {
+        const amount = bullet.count ? Math.max(1, topUnclaimed) : undefined;
+        void pullIn(bullet.id, amount);
+        setPulled(p => [...p, { id: bullet.id, title: bullet.title, amount }]);
+      }
     } else if (dir === 'left') {
       // Daily left is "not today" — a skip, not a demotion.
       if (weekly && PUSHED_OUT[bullet.horizon] !== bullet.horizon) {
-        void setHorizon(bullet.id, PUSHED_OUT[bullet.horizon]);
+        // moveToHorizon so pushing out also clears the open commitment it
+        // is being pushed away from.
+        void moveToHorizon(bullet.id, PUSHED_OUT[bullet.horizon]);
       }
     } else {
       void shelve(bullet.id);
@@ -216,7 +225,7 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
   const atRisk = useMemo(() => {
     const pulledIds = new Set(pulled.map(p => p.id));
     return allBullets
-      .filter(b => b.state === 'open' && b.deadline && !pulledIds.has(b.id))
+      .filter(b => b.state === 'open' && !b.parentId && b.deadline && !pulledIds.has(b.id))
       .map(b => ({ bullet: b, tension: tensionOf(b, shotsByBullet.get(b.id) ?? [], today) }))
       .filter(t => t.tension.level !== 'calm')
       .sort(byUrgency);

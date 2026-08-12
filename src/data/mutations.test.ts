@@ -5,6 +5,8 @@ import {
   callHuddle,
   callOff,
   completeBullet,
+  moveToHorizon,
+  settleFromOps,
   deleteBullet,
   reopenBullet,
   completeShot,
@@ -24,6 +26,7 @@ import { pending } from './outbox';
 import { applyLocal } from './mutations';
 import { seedIfEmpty } from './seed';
 import { today, weekStart } from '../lib/dates';
+import { progressOf } from './selectors';
 import { hasAnswered, responseOf, type Bullet, type Huddle, type Shot } from './types';
 
 const bulletOf = async (id: string) =>
@@ -395,5 +398,95 @@ describe('deleting a bullet', () => {
     expect((await db.bullets.get(child))?.deletedAt).toBeTruthy();
     // An orphaned shot would keep rendering a card for a bullet that is gone.
     expect(await shotsOf(parent)).toHaveLength(0);
+  });
+});
+
+describe('moving a bullet keeps the calendar honest', () => {
+  it('putting it on NOW actually schedules it for today', async () => {
+    // The strand-it-nowhere bug: setHorizon alone left the bullet off every
+    // calendar AND off the Shelf, with no way to reach it again.
+    const id = await createBullet({ title: 'Invoice', horizon: 'shelf' });
+    await moveToHorizon(id, 'now');
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].date).toBe(today());
+    expect((await bulletOf(id)).horizon).toBe('now');
+  });
+
+  it('putting it on NEXT schedules the week and drops today', async () => {
+    const id = await createBullet({ title: 'Invoice', horizon: 'now' });
+    await moveToHorizon(id, 'next');
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].scope).toBe('week');
+  });
+
+  it('shelving keeps the record of work already done', async () => {
+    const id = await createBullet({ title: 'Posts', count: { total: 20, unit: 'posts' } });
+    await pullToDay(id, today(), 8);
+    const shot = (await shotsOf(id))[0];
+    await completeShot(shot.id);
+    expect(progressOf(await bulletOf(id), await shotsOf(id)).done).toBe(8);
+
+    await shelve(id);
+
+    // Deleting the done shots would silently reset 8 posts of real work to zero.
+    expect(progressOf(await bulletOf(id), await shotsOf(id)).done).toBe(8);
+  });
+});
+
+describe('completion converges across devices', () => {
+  it('finishes a counted bullet whose halves were done on two phones', async () => {
+    const id = await createBullet({ title: '20 posts', count: { total: 20, unit: 'posts' } });
+    await pullToDay(id, '2026-08-12', 10);
+    const mine = (await shotsOf(id))[0];
+    await completeShot(mine.id);
+    expect((await bulletOf(id)).state).toBe('open');
+
+    // Angie's half arrives from the server. Her device never saw ours, so the
+    // rollup she computed locally could not know the total was reached.
+    const peerShot = 'peer-shot-1';
+    await applyLocal([
+      { opId: 'p1', entity: 'shot', entityId: peerShot, field: 'bulletId', value: id, ts: Date.now() + 1, actor: 'angie' },
+      { opId: 'p2', entity: 'shot', entityId: peerShot, field: 'scope', value: 'day', ts: Date.now() + 1, actor: 'angie' },
+      { opId: 'p3', entity: 'shot', entityId: peerShot, field: 'date', value: '2026-08-13', ts: Date.now() + 1, actor: 'angie' },
+      { opId: 'p4', entity: 'shot', entityId: peerShot, field: 'amount', value: 10, ts: Date.now() + 1, actor: 'angie' },
+      { opId: 'p5', entity: 'shot', entityId: peerShot, field: 'state', value: 'done', ts: Date.now() + 1, actor: 'angie' },
+      { opId: 'p6', entity: 'shot', entityId: peerShot, field: 'sortKey', value: 'a1', ts: Date.now() + 1, actor: 'angie' },
+    ]);
+
+    expect((await bulletOf(id)).state).toBe('open'); // not settled yet
+    await settleFromOps([
+      { opId: 'p5', entity: 'shot', entityId: peerShot, field: 'state', value: 'done', ts: Date.now() + 1, actor: 'angie' },
+    ]);
+    expect((await bulletOf(id)).state).toBe('done');
+  });
+});
+
+describe('hitting a shot tidies up after itself', () => {
+  it('closes the bullets other open shots so they stop showing as unhit', async () => {
+    const id = await createBullet({ title: 'Invoice', horizon: 'shelf' });
+    await pullToDay(id, '2026-08-10');
+    await pullToDay(id, '2026-08-11');
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(2);
+
+    await completeShot(shots[1].id);
+
+    // A finished bullet must not keep rendering an open card on Monday.
+    expect((await shotsOf(id)).every(s => s.state === 'done')).toBe(true);
+    expect((await bulletOf(id)).state).toBe('done');
+  });
+
+  it('rolls a sub-bullets hit up to its parent', async () => {
+    const parent = await createBullet({ title: 'Parent', horizon: 'shelf' });
+    const child = await createBullet({ title: 'Only piece', parentId: parent });
+    await pullToDay(child, today());
+    const shot = (await shotsOf(child))[0];
+
+    await completeShot(shot.id);
+
+    expect((await bulletOf(child)).state).toBe('done');
+    expect((await bulletOf(parent)).state).toBe('done');
   });
 });

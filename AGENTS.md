@@ -89,9 +89,22 @@ so `fetch('/api/sync')` hits an origin with no server. Always go through
 `netlify/lib/http.mts`, or the device's request is never even sent.
 
 **Horizon alone does not put a bullet on the calendar.** Every calendar view
-renders *shots*. A bullet with `horizon: 'now'` and no shot is invisible in
-Today, Week and Shelf simultaneously. `createBullet` now creates the matching
-shot for `now`/`next`. If you add another committing horizon, do the same.
+renders *shots*, and `useShelf` only lists `shelf`/`later` — so a bullet with
+`horizon: 'now'` and no shot is invisible in Today, Week AND Shelf at once, and
+neither Pull will offer it again. **Always change a horizon with
+`moveToHorizon()`, never a raw `setHorizon()`** — it creates or clears the
+matching shot. This bug shipped twice, in `createBullet` and again in the zoom
+view's "Move it" chips, which is why the raw setter is now effectively private.
+
+**Completion is derived, so it must be re-derived when peer ops land.** The old
+rollup summed shots on the device that tapped, at that moment — so "20 posts",
+ten hit on each phone, left both holding 20 of 20 done with the bullet open
+forever. `settleFromOps()` runs after `applyLocal` in the sync client. If you
+add another way to finish work, it has to converge the same way.
+
+**Never delete a completed shot.** Progress is derived from live shots, so
+soft-deleting a done one silently erases work that actually happened and resets
+a counted bullet to zero. `moveToHorizon` clears only *open* commitments.
 
 **Clock skew between devices.** `mutations.ts` uses a hybrid logical clock that
 absorbs every timestamp it sees, local or remote. Without it, one phone running

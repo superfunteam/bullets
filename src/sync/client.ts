@@ -1,5 +1,5 @@
 import { db } from '../data/db';
-import { applyLocal, onChange } from '../data/mutations';
+import { applyLocal, onChange, settleFromOps } from '../data/mutations';
 import { ack, pending } from '../data/outbox';
 import { clearToken, ensureToken, getPerson } from './auth';
 import { apiUrl } from './api';
@@ -121,7 +121,13 @@ export async function syncOnce(): Promise<void> {
         if (outgoing.length) await ack(outgoing.map(o => o.opId));
       }
 
-      if (body.ops?.length) await applyLocal(body.ops);
+      if (body.ops?.length) {
+        await applyLocal(body.ops);
+        // Completion is derived, and the peer that wrote these could not see
+        // our half of the work. Re-derive for anything they touched, or a
+        // counted bullet finished across both phones stays open forever.
+        await settleFromOps(body.ops);
+      }
       await db.meta.put({ key: 'cursor', value: body.seq });
       present = body.presence ?? [];
 
