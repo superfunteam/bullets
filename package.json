@@ -1,0 +1,46 @@
+{
+  "name": "bullets",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Bullets — No more dodging. A two-person, deadline-first bullet journal for Superfun.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "cap:sync": "npm run build && cap sync android",
+    "cap:open": "cap open android"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "@netlify/blobs": "^10.7.12",
+    "@netlify/database": "^1.1.0",
+    "@netlify/functions": "^5.3.0",
+    "@use-gesture/react": "^10.3.1",
+    "dexie": "^4.4.4",
+    "dexie-react-hooks": "^4.4.0",
+    "fractional-indexing": "^3.2.0",
+    "motion": "^13.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@netlify/vite-plugin": "^2.12.9",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}
