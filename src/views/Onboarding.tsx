@@ -96,13 +96,20 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
    */
   const goTo = (to: number, velocity = 0) => {
     const next = Math.max(0, Math.min(CARDS.length - 1, to));
+    const moving = next !== indexRef.current;
     setIndex(next);
     const target = -next * page;
     if (reduced) {
       x.jump(target);
       return;
     }
-    animate(x, target, velocity !== 0 ? { ...fling, velocity } : settle);
+    /**
+     * Velocity is carried only when the deck actually changes page. A flick
+     * that doesn't clear the threshold — or one thrown past either end — is
+     * going back where it came from, and handing `fling` an outward velocity
+     * for that swings the whole deck wide before it returns.
+     */
+    animate(x, target, moving && velocity !== 0 ? { ...fling, velocity } : settle);
   };
 
   const goRef = useRef(goTo);
@@ -127,7 +134,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       transition={reduced ? { duration: 0.01 } : { duration: 0.2 }}
       style={{
         paddingTop: 'calc(var(--inset-top) + 0.5rem)',
-        paddingBottom: 'calc(var(--inset-bottom) + 1rem)',
+        paddingBottom: 'calc(var(--inset-bottom) + 1.35rem)',
       }}
     >
       <header className="mx-auto flex w-full max-w-md shrink-0 items-center justify-between px-6">
@@ -162,9 +169,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           onDragEnd={(_, info) => {
             const far = info.offset.x;
             const v = info.velocity.x;
-            if (far < -threshold || v < -SWIPE_VELOCITY) goTo(index + 1, v);
-            else if (far > threshold || v > SWIPE_VELOCITY) goTo(index - 1, v);
-            else goTo(index, v);
+            // Distance *or* velocity, same as the Pull: a confident flick is a
+            // decision even when the finger barely travelled.
+            const next =
+              far < -threshold || v < -SWIPE_VELOCITY
+                ? index + 1
+                : far > threshold || v > SWIPE_VELOCITY
+                  ? index - 1
+                  : index;
+            goTo(next, v);
           }}
         >
           {CARDS.map((card, i) => (
@@ -293,19 +306,18 @@ function IdeaCard({ active, reduced }: CardProps) {
         eyebrow="The idea"
         title="A target and a horizon."
         body="Every other tracker jams both into one date field, then paints the list red. Bullets keeps them apart — when it's due, and when you'll deal with it."
-        grace="The distance between the two is the whole app."
+        grace="Nine days out, filed under someday."
       />
 
       <div className="mt-8">
         <Slab hue={HUE_HALCYON} tone="raised">
           <div className="px-6 py-6 pl-8">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <KindGlyph kind="task" />
-                <h3 className="display text-[1.4rem] text-[var(--ink)]">Rebrand deck</h3>
-              </div>
+            {/* The badge lands a beat after the card settles. It is the payoff
+                of the two rows below it, so arriving already lit would make it
+                just another chip. */}
+            <div className="flex h-7 items-center gap-2.5">
+              <KindGlyph kind="task" />
               <motion.span
-                className="shrink-0"
                 initial={{ opacity: 0, scale: 0.72 }}
                 animate={active ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.72 }}
                 transition={active && !reduced ? { ...snap, delay: 0.45 } : t}
@@ -313,6 +325,10 @@ function IdeaCard({ active, reduced }: CardProps) {
                 <TensionBadge level="incoming" daysLeft={9} />
               </motion.span>
             </div>
+
+            <h3 className="display mt-3 text-[1.4rem] leading-tight text-[var(--ink)]">
+              Halcyon rebrand deck
+            </h3>
 
             <dl className="mt-6 space-y-3.5">
               <Field label="Target">
@@ -331,8 +347,7 @@ function IdeaCard({ active, reduced }: CardProps) {
         </Slab>
 
         <p className="meta mt-4 leading-snug text-[var(--ink-3)]">
-          Due in nine days, filed under someday. Bullets says so out loud instead of waiting to
-          go wide.
+          Bullets says so now, rather than the morning it goes wide.
         </p>
       </div>
     </>
@@ -614,7 +629,9 @@ function ShotsCard({ active, reduced }: CardProps) {
               i < SHOT_HIT
                 ? 'var(--hit)'
                 : i < SHOT_HIT + SHOT_LINED
-                  ? 'var(--surface-3)'
+                  ? // Not surface-3: against a surface-2 block it is a shade
+                    // apart, and "committed" has to be visible across the grid.
+                    'var(--line-strong)'
                   : null;
             return (
               <span
@@ -645,7 +662,7 @@ function ShotsCard({ active, reduced }: CardProps) {
           <Swatch color="var(--hit)">
             <span className="numeral">{SHOT_HIT}</span> hit today
           </Swatch>
-          <Swatch color="var(--surface-3)">
+          <Swatch color="var(--line-strong)">
             <span className="numeral">{SHOT_LINED}</span> lined up Thursday
           </Swatch>
         </div>
