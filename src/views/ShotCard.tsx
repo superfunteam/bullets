@@ -21,12 +21,25 @@ export function ShotCard({
   onZoom,
   onHit,
   index = 0,
+  zoomId,
 }: {
   row: ShotRow;
   today: string;
   onZoom?: (bulletId: string) => void;
   onHit?: (shotId: string) => void;
   index?: number;
+  /**
+   * The shared element this card claims, so it can physically become the zoom.
+   * Defaults to the bullet's global id, which is what BulletZoom grows out of.
+   *
+   * A layoutId is a claim on ONE element. A bullet can hold two day shots on
+   * the same day — hit one, then take another from the zoom — and two mounted
+   * cards claiming `bullet-<id>` make motion's projection pick a lead at
+   * random: tapping either one zooms out of the wrong card, and they fight
+   * over the projection on every re-render. A list that can render the same
+   * bullet twice passes an id of its own for the second card.
+   */
+  zoomId?: string;
 }) {
   const { shot, bullet, client } = row;
   const done = shot.state === 'done';
@@ -50,7 +63,7 @@ export function ShotCard({
   return (
     <motion.div
       layout
-      layoutId={`bullet-${bullet.id}`}
+      layoutId={zoomId ?? `bullet-${bullet.id}`}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}

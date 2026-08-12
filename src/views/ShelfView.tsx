@@ -4,9 +4,9 @@ import { Slab } from '../design/Slab';
 import { BigButton, Empty, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
 import { byUrgency, tensionOf } from '../data/selectors';
-import { useClients, useShelf } from '../data/store';
+import { useAllShots, useClients, useShelf } from '../data/store';
 import { shortDate, today as todayFn } from '../lib/dates';
-import type { Bullet } from '../data/types';
+import type { Bullet, Shot } from '../data/types';
 
 /**
  * Everything we have not decided on yet, filed by client and shut by default.
@@ -19,6 +19,9 @@ import type { Bullet } from '../data/types';
 
 const OPEN_KEY = 'bullets.shelfOpen';
 const NO_CLIENT = '~none';
+
+/** One identity for "no shots", so the grouping memo isn't churned by a literal. */
+const NO_SHOTS: Shot[] = [];
 
 type Tension = ReturnType<typeof tensionOf>;
 type Row = { bullet: Bullet; tension: Tension };
@@ -48,6 +51,24 @@ export function ShelfView({
   const today = todayFn();
   const shelf = useShelf();
   const clients = useClients();
+
+  /**
+   * Live shots, bucketed by bullet.
+   *
+   * Rows used to hand tensionOf an empty list, which badged a 'later' bullet
+   * Incoming even when it already had a commitment on a calendar — the app
+   * shouting about work that has in fact been aimed at.
+   */
+  const allShots = useAllShots();
+  const shotsByBullet = useMemo(() => {
+    const map = new Map<string, Shot[]>();
+    for (const shot of allShots) {
+      const list = map.get(shot.bulletId);
+      if (list) list.push(shot);
+      else map.set(shot.bulletId, [shot]);
+    }
+    return map;
+  }, [allShots]);
 
   const [open, setOpen] = useState<Set<string>>(readOpen);
   useEffect(() => {
@@ -84,7 +105,10 @@ export function ShelfView({
         };
         buckets.set(key, group);
       }
-      group.rows.push({ bullet, tension: tensionOf(bullet, [], today) });
+      group.rows.push({
+        bullet,
+        tension: tensionOf(bullet, shotsByBullet.get(bullet.id) ?? NO_SHOTS, today),
+      });
     }
 
     const list = [...buckets.values()];
@@ -94,7 +118,7 @@ export function ShelfView({
       if (b.key === NO_CLIENT) return -1;
       return a.name.localeCompare(b.name);
     });
-  }, [shelf, clients, today]);
+  }, [shelf, clients, shotsByBullet, today]);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-40">
@@ -159,10 +183,18 @@ function ClientDrawer({
 }) {
   return (
     <motion.section
-      layout
+      // Position, never size. A plain `layout` animates the drawer's own height
+      // as a scale, and everything inside it — the client name, the count —
+      // rides that scale and visibly stretches on every open and close. The
+      // drawer's height is allowed to snap; what has to be smooth is the
+      // drawers below it sliding down, which is a position change.
+      layout="position"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ ...settle, delay: stagger(index) }}
+      // The stagger belongs to the first reveal only. Left on the layout
+      // animation it delays the drawers below a toggle, so the stack answers
+      // the tap late.
+      transition={{ ...settle, delay: stagger(index), layout: settle }}
     >
       <motion.button
         type="button"

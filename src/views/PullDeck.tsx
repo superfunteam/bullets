@@ -12,7 +12,15 @@ import { BigButton, ClientDot, HorizonChip, KindGlyph, TensionBadge } from '../d
 import { fling, prefersReducedMotion, settle, snap } from '../design/springs';
 import { pullToDay, pullToWeek, setHorizon, shelve } from '../data/mutations';
 import { byUrgency, tensionOf, unclaimedOf, type Tension } from '../data/selectors';
-import { useBullets, useClients, useShelf, useShotsFor, useShotsOn, useWeekShots } from '../data/store';
+import {
+  useAllShots,
+  useBullets,
+  useClients,
+  useShelf,
+  useShotsFor,
+  useShotsOn,
+  useWeekShots,
+} from '../data/store';
 import { HORIZON_META, type Bullet, type Client, type Horizon, type Shot } from '../data/types';
 import { daysUntil, relativeDay, today as todayFn } from '../lib/dates';
 
@@ -63,6 +71,7 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
   const clients = useClients();
   const weekRows = useWeekShots(today);
   const dayRows = useShotsOn(today);
+  const allShots = useAllShots();
 
   /** Decided in this session. Kept locally so a card leaves the instant you act,
    *  rather than whenever the write round-trips through Dexie. */
@@ -79,15 +88,23 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
     return () => clearTimeout(t);
   }, []);
 
+  /**
+   * Every live shot, not just this week's.
+   *
+   * The deck has to know about a commitment wherever it sits on the calendar:
+   * a day shot left open on Monday is the reason a bullet must not be offered
+   * again on Wednesday, and tensionOf can only tell aim from abandonment if it
+   * can see the shots that fall between now and the target.
+   */
   const shotsByBullet = useMemo(() => {
     const map = new Map<string, Shot[]>();
-    for (const row of [...weekRows, ...dayRows]) {
-      const list = map.get(row.bullet.id);
-      if (list) list.push(row.shot);
-      else map.set(row.bullet.id, [row.shot]);
+    for (const shot of allShots) {
+      const list = map.get(shot.bulletId);
+      if (list) list.push(shot);
+      else map.set(shot.bulletId, [shot]);
     }
     return map;
-  }, [weekRows, dayRows]);
+  }, [allShots]);
 
   const clientById = useMemo(() => {
     const map = new Map<string, Client>();
@@ -105,9 +122,20 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
         const near = b.deadline !== undefined && daysUntil(today, b.deadline) <= NEAR_TARGET_DAYS;
         if (b.horizon === 'soon' || near) pool.set(b.id, b);
       }
-      // Anything already committed this week has been decided once already.
-      for (const id of [...pool.keys()]) {
-        if ((shotsByBullet.get(id) ?? []).some(s => s.state === 'open')) pool.delete(id);
+      /**
+       * Anything holding a live commitment has been decided once already.
+       *
+       * "Live" means any open shot, not just one dated inside this week: an
+       * open day shot from an earlier day is still a commitment, and offering
+       * its bullet again is how you end up with two. The one exception is a
+       * counted bullet that genuinely still has room at week scope — half the
+       * posts committed leaves half to decide about.
+       */
+      for (const [id, bullet] of [...pool]) {
+        const shots = shotsByBullet.get(id) ?? [];
+        if (!shots.some(s => s.state === 'open')) continue;
+        if (bullet.count && unclaimedOf(bullet, shots, 'week') > 0) continue;
+        pool.delete(id);
       }
     } else {
       const alreadyToday = new Set(dayRows.map(r => r.bullet.id));
@@ -139,7 +167,12 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
 
   const top = deck.length > 0 ? deck[0] : undefined;
   const topShots = useShotsFor(top?.bullet.id);
-  const topUnclaimed = top?.bullet.count ? unclaimedOf(top.bullet, topShots) : 0;
+  // Scope has to match what the pull is about to write, or the stepper offers a
+  // max that was already spoken for — the weekly deck claims out of the total,
+  // the daily deck claims out of the week.
+  const topUnclaimed = top?.bullet.count
+    ? unclaimedOf(top.bullet, topShots, weekly ? 'week' : 'day')
+    : 0;
 
   const pullIn = (id: string, amount?: number) =>
     weekly ? pullToWeek(id, today, amount) : pullToDay(id, today, amount);

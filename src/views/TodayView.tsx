@@ -5,10 +5,10 @@ import { HuddleStrip } from './HuddleStrip';
 import { Empty, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { settle } from '../design/springs';
-import { useBullets, useHuddlesOn, useShotsOn, useWeekShots } from '../data/store';
+import { useAllShots, useBullets, useHuddlesOn, useShotsOn, useWeekShots } from '../data/store';
 import { tensionOf } from '../data/selectors';
 import { relativeDay, shortDate, today as todayFn, weekdayName } from '../lib/dates';
-import type { Bullet } from '../data/types';
+import type { Bullet, Shot } from '../data/types';
 
 /**
  * The default screen. One column, giant cards, huddles inline at their time.
@@ -29,27 +29,54 @@ export function TodayView({
   const huddles = useHuddlesOn(today);
   const weekRows = useWeekShots(today);
   const allBullets = useBullets();
+  const allShots = useAllShots();
 
-  const open = rows.filter(r => r.shot.state === 'open');
-  const hit = rows.filter(r => r.shot.state === 'done');
+  const open = useMemo(() => rows.filter(r => r.shot.state === 'open'), [rows]);
+  const hit = useMemo(() => rows.filter(r => r.shot.state === 'done'), [rows]);
 
-  // Anything with a target closing in that we have not actually aimed at.
+  /**
+   * A bullet can appear twice on one day — hit a shot, then take another from
+   * the zoom — and a layoutId is a claim on a single shared element. Two cards
+   * claiming `bullet-<id>` make motion's projection pick a lead at random, so
+   * only the first card for a bullet keeps the global id and any later one
+   * gets an id nothing else answers to. Open and Hit share one ledger, since
+   * the same bullet can sit in both.
+   */
+  const zoomIds = useMemo(() => {
+    const claimed = new Set<string>();
+    const ids = new Map<string, string>();
+    for (const row of [...open, ...hit]) {
+      const first = !claimed.has(row.bullet.id);
+      claimed.add(row.bullet.id);
+      ids.set(row.shot.id, first ? `bullet-${row.bullet.id}` : `shot-${row.shot.id}`);
+    }
+    return ids;
+  }, [open, hit]);
+
+  /**
+   * Anything with a target closing in that we have not actually aimed at.
+   *
+   * Tension reads every live shot, not just today's. A bullet whose only
+   * commitment is an open week shot is aimed, and judging it on today's shots
+   * alone made the banner shout about work the Weekly Pull had already
+   * committed — while Week, looking at the same bullet, called it calm.
+   */
   const incoming = useMemo(() => {
-    const shotsByBullet = new Map<string, typeof rows>();
-    for (const r of rows) {
-      const list = shotsByBullet.get(r.bullet.id) ?? [];
-      list.push(r);
-      shotsByBullet.set(r.bullet.id, list);
+    const shotsByBullet = new Map<string, Shot[]>();
+    for (const s of allShots) {
+      const list = shotsByBullet.get(s.bulletId);
+      if (list) list.push(s);
+      else shotsByBullet.set(s.bulletId, [s]);
     }
     return allBullets
       .filter(b => b.state === 'open' && b.deadline)
       .map(b => ({
         bullet: b,
-        tension: tensionOf(b, (shotsByBullet.get(b.id) ?? []).map(r => r.shot), today),
+        tension: tensionOf(b, shotsByBullet.get(b.id) ?? [], today),
       }))
       .filter(t => t.tension.level !== 'calm')
       .sort((a, b) => (a.bullet.deadline! < b.bullet.deadline! ? -1 : 1));
-  }, [allBullets, rows, today]);
+  }, [allBullets, allShots, today]);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-40">
@@ -89,7 +116,14 @@ export function TodayView({
         <div className="space-y-3">
           <AnimatePresence mode="popLayout" initial={false}>
             {open.map((row, i) => (
-              <ShotCard key={row.shot.id} row={row} today={today} onZoom={onZoom} index={i} />
+              <ShotCard
+                key={row.shot.id}
+                row={row}
+                today={today}
+                onZoom={onZoom}
+                index={i}
+                zoomId={zoomIds.get(row.shot.id)}
+              />
             ))}
           </AnimatePresence>
         </div>
@@ -103,7 +137,13 @@ export function TodayView({
           <div className="space-y-3">
             <AnimatePresence mode="popLayout" initial={false}>
               {hit.map((row, i) => (
-                <ShotCard key={row.shot.id} row={row} today={today} index={i} />
+                <ShotCard
+                  key={row.shot.id}
+                  row={row}
+                  today={today}
+                  index={i}
+                  zoomId={zoomIds.get(row.shot.id)}
+                />
               ))}
             </AnimatePresence>
           </div>

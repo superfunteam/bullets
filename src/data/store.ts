@@ -138,6 +138,19 @@ export function useShotsFor(bulletId?: string): Shot[] {
   );
 }
 
+/**
+ * Every live shot, whatever its scope or date.
+ *
+ * Tension is a question about a bullet, not about a day: a bullet whose only
+ * commitment is an open week shot has genuinely been aimed at, and a screen
+ * that only loads today's shots cannot see that. Two people and a handful of
+ * shots a week means the table is small enough that one scan beats keeping
+ * several date-scoped queries in step.
+ */
+export function useAllShots(): Shot[] {
+  return useLiveQuery(async () => cleanAll<Shot>(await db.shots.toArray()), [], []) ?? [];
+}
+
 export function useHuddles(): Huddle[] {
   return (
     useLiveQuery(async () => {

@@ -62,7 +62,46 @@ export function HuddleBoard({ huddleId, onClose }: { huddleId: string; onClose: 
 
   const me = getActor();
   const [here, setHere] = useState<Person[]>([]);
+
+  /**
+   * The decision editor lives up here, not in the row.
+   *
+   * Two reasons, both of them the same bug. A decision arriving from the other
+   * phone changes `item.decision` and moves the item to the decided lane, and
+   * the row unmounts from one lane and mounts in the other — local draft state
+   * dies with it. Holding the draft above both lanes means a half-typed
+   * sentence survives both the sync and the lane move.
+   *
+   * `seed` is what the decision said when the editor opened. Anything else
+   * showing up in `item.decision` is the other person deciding underneath us,
+   * which the editor says out loud rather than quietly overwriting either way.
+   */
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [seed, setSeed] = useState('');
+
+  const openEditor = (id: string) => {
+    const current = items.find(i => i.id === id)?.decision ?? '';
+    setEditingId(id);
+    setSeed(current);
+    setDraft(current);
+  };
+
+  const closeEditor = () => {
+    setEditingId(null);
+    setDraft('');
+    setSeed('');
+  };
+
+  // The other person can remove an item mid-edit. Without this the editor is
+  // pointed at a row that renders in neither lane, so there is nothing left to
+  // tap to dismiss it.
+  useEffect(() => {
+    if (!editingId || items.some(i => i.id === editingId)) return;
+    setEditingId(null);
+    setDraft('');
+    setSeed('');
+  }, [editingId, items]);
 
   // Live pace while the board is open; back to idle the moment it closes, so
   // two people reading Today aren't polling every 1.5s for no reason.
@@ -200,8 +239,11 @@ export function HuddleBoard({ huddleId, onClose }: { huddleId: string; onClose: 
           count={table.length}
           rows={table}
           editingId={editingId}
-          onOpenEditor={setEditingId}
-          onCloseEditor={() => setEditingId(null)}
+          draft={draft}
+          seed={seed}
+          onDraft={setDraft}
+          onOpenEditor={openEditor}
+          onCloseEditor={closeEditor}
           empty="Nothing on the table yet. Add what you want to talk about."
         >
           <AddItem huddleId={huddleId} />
@@ -212,8 +254,11 @@ export function HuddleBoard({ huddleId, onClose }: { huddleId: string; onClose: 
           count={decided.length}
           rows={decided}
           editingId={editingId}
-          onOpenEditor={setEditingId}
-          onCloseEditor={() => setEditingId(null)}
+          draft={draft}
+          seed={seed}
+          onDraft={setDraft}
+          onOpenEditor={openEditor}
+          onCloseEditor={closeEditor}
           empty="Nothing decided yet."
         />
       </LayoutGroup>
@@ -294,7 +339,7 @@ function ResponseBar({
 
   return (
     <section className="mb-9">
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-3 items-stretch gap-2.5">
         <Answer
           label="In"
           sub="Already assumed"
@@ -406,13 +451,15 @@ function Answer({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="text-left">
+    // h-full through the button and Slab so all three stay the same height when
+    // one of the sub-labels wraps to an extra line.
+    <button type="button" onClick={onClick} className="h-full text-left">
       <Slab
         tone={active ? 'raised' : 'sunken'}
         interactive
-        className={active ? 'ring-2 ring-[var(--ink)]' : ''}
+        className={`h-full ${active ? 'ring-2 ring-[var(--ink)]' : ''}`}
       >
-        <div className="flex min-h-[86px] flex-col justify-between px-4 py-4">
+        <div className="flex h-full min-h-[86px] flex-col justify-between px-4 py-4">
           <p className="display text-xl text-[var(--ink)]">{label}</p>
           <p className="meta mt-2 leading-tight text-[var(--ink-3)]">{sub}</p>
         </div>
@@ -477,6 +524,9 @@ function Lane({
   count,
   rows,
   editingId,
+  draft,
+  seed,
+  onDraft,
   onOpenEditor,
   onCloseEditor,
   empty,
@@ -486,6 +536,10 @@ function Lane({
   count: number;
   rows: Row[];
   editingId: string | null;
+  draft: string;
+  /** What the decision said when the editor opened. */
+  seed: string;
+  onDraft: (value: string) => void;
   onOpenEditor: (id: string) => void;
   onCloseEditor: () => void;
   empty: string;
@@ -499,27 +553,35 @@ function Lane({
 
       <div className="space-y-2.5">
         <AnimatePresence mode="popLayout" initial={false}>
-          {rows.map(row => (
-            <motion.div
-              key={row.item.id}
-              // Position-only: the decision editor and the decision text both
-              // change an item's height, and animating size would scale the
-              // text inside it. Lane travel is a position change anyway.
-              layout="position"
-              layoutId={`hi-${row.item.id}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97 }}
-              transition={laneSpring}
-            >
-              <ItemBody
-                row={row}
-                editing={editingId === row.item.id}
-                onOpenEditor={() => onOpenEditor(row.item.id)}
-                onCloseEditor={onCloseEditor}
-              />
-            </motion.div>
-          ))}
+          {rows.map(row => {
+            const editing = editingId === row.item.id;
+            return (
+              <motion.div
+                key={row.item.id}
+                // Position-only: the decision editor and the decision text both
+                // change an item's height, and animating size would scale the
+                // text inside it. Lane travel is a position change anyway.
+                layout="position"
+                layoutId={`hi-${row.item.id}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                transition={laneSpring}
+              >
+                <ItemBody
+                  row={row}
+                  editing={editing}
+                  draft={draft}
+                  onDraft={onDraft}
+                  // The decision moved while this draft was open, which only
+                  // happens when the other person decided it first.
+                  overtaken={editing && (row.item.decision ?? '') !== seed}
+                  onOpenEditor={() => onOpenEditor(row.item.id)}
+                  onCloseEditor={onCloseEditor}
+                />
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
 
         {rows.length === 0 && (
@@ -535,11 +597,18 @@ function Lane({
 function ItemBody({
   row,
   editing,
+  draft,
+  onDraft,
+  overtaken,
   onOpenEditor,
   onCloseEditor,
 }: {
   row: Row;
   editing: boolean;
+  draft: string;
+  onDraft: (value: string) => void;
+  /** The decision changed under this draft — the other person got there first. */
+  overtaken: boolean;
   onOpenEditor: () => void;
   onCloseEditor: () => void;
 }) {
@@ -547,15 +616,15 @@ function ItemBody({
   const decidedLane = item.lane === 'decided';
   const title = bullet?.title ?? item.text ?? 'Untitled';
 
-  const [draft, setDraft] = useState(item.decision ?? '');
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Focus only. The draft is seeded once, where it lives — re-seeding here is
+  // what used to wipe a half-typed decision every time the board polled.
   useEffect(() => {
     if (!editing) return;
-    setDraft(item.decision ?? '');
     const t = setTimeout(() => areaRef.current?.focus(), 60);
     return () => clearTimeout(t);
-  }, [editing, item.decision]);
+  }, [editing]);
 
   const commit = () => {
     const d = draft.trim();
@@ -617,10 +686,31 @@ function ItemBody({
               className="mt-4"
               onClick={e => e.stopPropagation()}
             >
+              {/* Their decision landed mid-sentence. Say so, keep what was
+                  typed, and make the choice between the two explicit — the
+                  alternative is a draft that vanishes with no explanation. */}
+              {overtaken && (
+                <div
+                  className="mb-3.5 rounded-[var(--r-md)] px-4 py-3"
+                  style={{ background: 'var(--surface-3)' }}
+                >
+                  <p className="meta text-[var(--ink-2)] uppercase">
+                    Decided while you were typing
+                  </p>
+                  {!decidedLane && item.decision && (
+                    <p className="editorial mt-1.5 text-lg leading-snug text-[var(--ink-2)]">
+                      “{item.decision}”
+                    </p>
+                  )}
+                  <p className="meta mt-1.5 leading-snug text-[var(--ink-3)]">
+                    Yours is still here — keep theirs, or use yours instead.
+                  </p>
+                </div>
+              )}
               <textarea
                 ref={areaRef}
                 value={draft}
-                onChange={e => setDraft(e.target.value)}
+                onChange={e => onDraft(e.target.value)}
                 rows={2}
                 placeholder="What did we decide?"
                 className="min-h-[88px] w-full resize-none rounded-[var(--r-md)]
@@ -630,10 +720,10 @@ function ItemBody({
               />
               <div className="mt-3 flex gap-2.5">
                 <SmallButton tone="quiet" onClick={onCloseEditor}>
-                  Not yet
+                  {overtaken ? 'Keep theirs' : 'Not yet'}
                 </SmallButton>
                 <SmallButton tone="ink" disabled={!draft.trim()} onClick={commit}>
-                  Decided
+                  {overtaken ? 'Use mine' : 'Decided'}
                 </SmallButton>
               </div>
             </motion.div>

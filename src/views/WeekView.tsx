@@ -1,4 +1,4 @@
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { ShotCard } from './ShotCard';
 import { HuddleStrip } from './HuddleStrip';
@@ -6,9 +6,9 @@ import { Slab } from '../design/Slab';
 import { ClientDot, KindGlyph, TensionBadge } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
 import { useDayShotsInRange, useHuddles, useWeekShots, type ShotRow } from '../data/store';
-import { tensionOf } from '../data/selectors';
+import { tensionOf, unclaimedOf } from '../data/selectors';
 import { shortDate, toDay, today as todayFn, weekDays, weekdayName } from '../lib/dates';
-import type { Huddle } from '../data/types';
+import type { Huddle, Shot } from '../data/types';
 
 /**
  * Seven days, Monday first. On a phone this is one column you thumb through;
@@ -19,6 +19,9 @@ import type { Huddle } from '../data/types';
 
 const LAYOUT_KEY = 'bullets.weekLayout';
 type Layout = 'column' | 'grid';
+
+/** A week commitment with work left, plus how much of it for a counted bullet. */
+type PoolEntry = { row: ShotRow; outstanding?: number };
 
 function readLayout(): Layout {
   try {
@@ -63,28 +66,76 @@ export function WeekView({
     return map;
   }, [huddles]);
 
-  /** Week commitments that nobody has pulled onto a day yet — the pull's pool. */
-  const pool = useMemo(() => {
-    const onADay = new Set(days.flatMap(d => (byDay[d] ?? []).map(r => r.bullet.id)));
-    return weekRows.filter(r => r.shot.state === 'open' && !onADay.has(r.bullet.id));
+  /**
+   * Week commitments that still owe work nobody has pulled onto a day.
+   *
+   * "Has a day shot" is only the right test for an uncounted bullet, where one
+   * day shot means the whole thing is handled. A counted one is drawn *out of*
+   * its week claim a slice at a time: twenty posts committed with four pulled
+   * onto Monday still owes sixteen. Dropping it the moment the first slice left
+   * made the Week screen read as an empty week — and took the Weekly Pull
+   * prompt with it — while the Daily Pull was still offering the bullet.
+   */
+  const pool = useMemo<PoolEntry[]>(() => {
+    /** Everything already drawn onto a day of this week, done or not. */
+    const drawn = new Map<string, number>();
+    for (const day of days) {
+      for (const row of byDay[day] ?? []) {
+        drawn.set(row.bullet.id, (drawn.get(row.bullet.id) ?? 0) + (row.shot.amount ?? 1));
+      }
+    }
+
+    // A bullet can hold more than one week shot. Group them so the claim is
+    // summed once and the bullet shows up as a single line.
+    const openWeekShots = new Map<string, Shot[]>();
+    for (const r of weekRows) {
+      if (r.shot.state !== 'open') continue;
+      const list = openWeekShots.get(r.bullet.id);
+      if (list) list.push(r.shot);
+      else openWeekShots.set(r.bullet.id, [r.shot]);
+    }
+
+    const seen = new Set<string>();
+    const out: PoolEntry[] = [];
+    for (const row of weekRows) {
+      const { bullet } = row;
+      if (row.shot.state !== 'open' || seen.has(bullet.id)) continue;
+      seen.add(bullet.id);
+
+      if (!bullet.count) {
+        if (!drawn.has(bullet.id)) out.push({ row });
+        continue;
+      }
+
+      // What the week actually claimed, i.e. the total less whatever stayed
+      // uncommitted at week scope — then less the slices already on a day.
+      const shots = openWeekShots.get(bullet.id) ?? [];
+      const claimed = bullet.count.total - unclaimedOf(bullet, shots, 'week');
+      const outstanding = claimed - (drawn.get(bullet.id) ?? 0);
+      if (outstanding > 0) out.push({ row, outstanding });
+    }
+    return out;
   }, [weekRows, byDay, days]);
 
   /**
-   * ShotCard derives its layoutId from the bullet, and a counted bullet can be
-   * pulled onto two days in the same week — five posts Monday, five Thursday.
-   * Two live elements claiming one layoutId makes projection pick a winner at
-   * random. Namespace per day only when that actually happens, so in the normal
-   * case the ids stay global and zooming a card is still a shared element.
+   * ShotCard defaults its layoutId to the bullet's global id, and a counted
+   * bullet can be pulled onto two days in the same week — five posts Monday,
+   * five Thursday — or twice onto the same day. Two live cards claiming one
+   * layoutId makes motion's projection pick a lead at random, so exactly one
+   * card per bullet keeps the plain `bullet-<id>` that BulletZoom grows out of
+   * and every later one gets an id of its own.
    */
-  const namespaceDays = useMemo(() => {
+  const sharedZoomShots = useMemo(() => {
     const seen = new Set<string>();
+    const ids = new Set<string>();
     for (const day of days) {
       for (const row of byDay[day] ?? []) {
-        if (seen.has(row.bullet.id)) return true;
+        if (seen.has(row.bullet.id)) continue;
         seen.add(row.bullet.id);
+        ids.add(row.shot.id);
       }
     }
-    return false;
+    return ids;
   }, [days, byDay]);
 
   const grid = layout === 'grid';
@@ -110,8 +161,15 @@ export function WeekView({
             This week · <span className="numeral">{pool.length}</span>
           </h2>
           <div className="space-y-2.5">
-            {pool.map((row, i) => (
-              <PoolRow key={row.shot.id} row={row} today={today} index={i} onZoom={onZoom} />
+            {pool.map((entry, i) => (
+              <PoolRow
+                key={entry.row.shot.id}
+                row={entry.row}
+                outstanding={entry.outstanding}
+                today={today}
+                index={i}
+                onZoom={onZoom}
+              />
             ))}
           </div>
         </section>
@@ -145,7 +203,7 @@ export function WeekView({
             index={i}
             rows={byDay[day] ?? []}
             huddles={huddlesByDay[day] ?? []}
-            group={namespaceDays ? `week-${day}` : undefined}
+            sharedZoomShots={sharedZoomShots}
             onZoom={onZoom}
             onOpenHuddle={onOpenHuddle}
           />
@@ -162,7 +220,7 @@ function DayBlock({
   index,
   rows,
   huddles,
-  group,
+  sharedZoomShots,
   onZoom,
   onOpenHuddle,
 }: {
@@ -171,7 +229,8 @@ function DayBlock({
   index: number;
   rows: ShotRow[];
   huddles: Huddle[];
-  group?: string;
+  /** The one shot per bullet that owns the shared `bullet-<id>`. See WeekView. */
+  sharedZoomShots: Set<string>;
   onZoom: (id: string) => void;
   onOpenHuddle: (id: string) => void;
 }) {
@@ -181,14 +240,6 @@ function DayBlock({
   const ordered = useMemo(
     () => [...rows.filter(r => r.shot.state === 'open'), ...rows.filter(r => r.shot.state === 'done')],
     [rows],
-  );
-
-  const shots = (
-    <AnimatePresence mode="popLayout" initial={false}>
-      {ordered.map((row, i) => (
-        <ShotCard key={row.shot.id} row={row} today={today} onZoom={onZoom} index={i} />
-      ))}
-    </AnimatePresence>
   );
 
   return (
@@ -231,7 +282,18 @@ function DayBlock({
         huddles.length === 0 && <p className="meta px-3 pb-3 text-[var(--ink-3)]">Clear</p>
       ) : (
         <div className="space-y-2.5">
-          {group ? <LayoutGroup id={group}>{shots}</LayoutGroup> : shots}
+          <AnimatePresence mode="popLayout" initial={false}>
+            {ordered.map((row, i) => (
+              <ShotCard
+                key={row.shot.id}
+                row={row}
+                today={today}
+                onZoom={onZoom}
+                index={i}
+                zoomId={sharedZoomShots.has(row.shot.id) ? undefined : `shot-${row.shot.id}`}
+              />
+            ))}
+          </AnimatePresence>
         </div>
       )}
     </motion.section>
@@ -241,11 +303,14 @@ function DayBlock({
 /** A week commitment with no day yet. Deliberately lighter than a ShotCard. */
 function PoolRow({
   row,
+  outstanding,
   today,
   index,
   onZoom,
 }: {
   row: ShotRow;
+  /** Counted bullets only — what the week still owes after the day pulls. */
+  outstanding?: number;
   today: string;
   index: number;
   onZoom: (id: string) => void;
@@ -267,6 +332,12 @@ function PoolRow({
           <p className="display min-w-0 flex-1 truncate text-lg text-[var(--ink)]">
             {bullet.title}
           </p>
+          {outstanding !== undefined && bullet.count && (
+            <span className="meta shrink-0 text-[var(--ink-2)]">
+              <span className="numeral">{outstanding}</span> of{' '}
+              <span className="numeral">{bullet.count.total}</span> {bullet.count.unit} left
+            </span>
+          )}
           {client && (
             <span className="hidden shrink-0 sm:inline-flex">
               <ClientDot hue={client.hue} name={client.name} />
