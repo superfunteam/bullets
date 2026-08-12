@@ -110,9 +110,6 @@ export function byUrgency(
 /** Every place a bullet can show up. See docs/state-model.md, invariant 2. */
 export type Surface = 'today' | 'week' | 'shelf' | 'weeklyPull' | 'dailyPull';
 
-/** How far ahead a target pulls a bullet into the Weekly Pull. */
-const NEAR_TARGET_DAYS = 21;
-
 /**
  * Where does this bullet actually appear?
  *
@@ -142,12 +139,23 @@ export function surfacesFor(bullet: Bullet, shots: Shot[], today: string): Surfa
 
   if (bullet.horizon === 'shelf' || bullet.horizon === 'later') out.push('shelf');
 
-  const near =
-    bullet.deadline !== undefined && daysUntil(today, bullet.deadline) <= NEAR_TARGET_DAYS;
-  const uncommitted =
-    bullet.horizon === 'shelf' || bullet.horizon === 'later' || bullet.horizon === 'soon';
-  const roomLeft = bullet.count ? unclaimedOf(bullet, shots, 'week') > 0 : false;
-  if ((uncommitted || near) && (live.length === 0 || roomLeft)) out.push('weeklyPull');
+  /**
+   * The safety net, and the rule that makes invariant 2 hold structurally.
+   *
+   * A commitment only counts while it is still ahead of you. Last Monday's
+   * open week shot is not a plan, it is an abandoned intention — and treating
+   * it as "already handled" is exactly the lie tensionOf refuses to tell.
+   *
+   * So: anything open without a live commitment is offered by the Weekly Pull,
+   * whatever its horizon. That covers a commitment gone stale with the clock, a
+   * counted bullet whose shot was hit with work still outstanding, and any
+   * future way of ending up committed to nothing. Nothing can fall through.
+   */
+  const committed = live.some(s => {
+    if (s.scope === 'day') return s.date >= today;
+    return s.date >= weekOf; // a week shot covers the week it starts
+  });
+  if (!committed) out.push('weeklyPull');
 
   const weekCommitment = live.some(s => s.scope === 'week' && s.date === weekOf);
   if (weekCommitment && !onToday) out.push('dailyPull');

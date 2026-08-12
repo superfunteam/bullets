@@ -11,7 +11,7 @@ import { Stepper } from '../design/Stepper';
 import { BigButton, ClientDot, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap } from '../design/springs';
 import { moveToHorizon, pullToDay, pullToWeek, shelve } from '../data/mutations';
-import { byUrgency, tensionOf, unclaimedOf, type Tension } from '../data/selectors';
+import { byUrgency, surfacesFor, tensionOf, unclaimedOf, type Tension } from '../data/selectors';
 import {
   useAllShots,
   useBullets,
@@ -125,19 +125,29 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
         if (b.horizon === 'soon' || near) pool.set(b.id, b);
       }
       /**
-       * Anything holding a live commitment has been decided once already.
+       * Only a LIVE commitment counts as already decided.
        *
-       * "Live" means any open shot, not just one dated inside this week: an
-       * open day shot from an earlier day is still a commitment, and offering
-       * its bullet again is how you end up with two. The one exception is a
-       * counted bullet that genuinely still has room at week scope — half the
-       * posts committed leaves half to decide about.
+       * surfacesFor is the shared answer to "where does this appear", and it
+       * says an open bullet with no commitment dated today or later belongs in
+       * this deck. Deferring to it is the point: when each view re-derived this
+       * for itself, the answers drifted and bullets fell through every one of
+       * them. A stale commitment from last Monday must make a bullet MORE
+       * likely to be offered, never invisible.
        */
       for (const [id, bullet] of [...pool]) {
         const shots = shotsByBullet.get(id) ?? [];
-        if (!shots.some(s => s.state === 'open')) continue;
-        if (bullet.count && unclaimedOf(bullet, shots, 'week') > 0) continue;
-        pool.delete(id);
+        const offered = surfacesFor(bullet, shots, today).includes('weeklyPull');
+        const roomLeft = bullet.count ? unclaimedOf(bullet, shots, 'week') > 0 : false;
+        if (!offered && !roomLeft) pool.delete(id);
+      }
+
+      // Anything stranded without a live commitment belongs here too, whatever
+      // its horizon — that is the safety net that makes invariant 2 hold.
+      for (const b of allBullets) {
+        if (b.state !== 'open' || b.parentId || pool.has(b.id)) continue;
+        if (surfacesFor(b, shotsByBullet.get(b.id) ?? [], today).includes('weeklyPull')) {
+          pool.set(b.id, b);
+        }
       }
     } else {
       const alreadyToday = new Set(dayRows.map(r => r.bullet.id));

@@ -44,6 +44,10 @@ rules disagreed and the last one to run decided. That is the disappear-reappear.
 **Parent** — derived, but only **on a child transition**, never speculatively.
 - A child becoming done → if all siblings are done, the parent becomes done.
 - A child becoming open → if the parent was done, it reopens.
+- **A child being added** → if the parent was done, it reopens. A change to the
+  child *set* is as much a transition as a change to a child's state; without
+  this, adding a piece to a finished parent left new open work reachable from
+  nowhere.
 - `Mark done` on a parent **completes all its open children**. The parent
   becomes done because its work is done, not because a flag was set.
 - `Reopen` on a parent reopens the parent and leaves children alone. Nothing
@@ -71,6 +75,11 @@ work that happened, not a commitment).
 Enforced in exactly one place: `moveToHorizon()`. Nothing else may write
 `horizon`.
 
+This holds at write time and **decays with the calendar** — a shot dated today
+is stale tomorrow. Rather than a background job re-asserting it, invariant 2 is
+made independent of it: the Weekly Pull catches anything without a live
+commitment, so a decayed invariant 1 is a nuisance rather than a lost bullet.
+
 ### 2. Every open bullet is reachable
 
 > An open, undeleted, top-level bullet appears in **at least one** of
@@ -81,16 +90,38 @@ a committing horizon and no shot is absent from every calendar (they render
 shots), absent from the Shelf (it lists only `shelf`/`later`), and offered by
 neither Pull. Saved, syncing, and unreachable.
 
+All conditions below apply to **open** bullets only — a finished one is never
+rendered as commitment or offered by a deck.
+
 | Where it lives | Condition |
 |---|---|
 | Today | an open day shot dated today |
 | Week | an open shot inside this week |
 | Shelf | horizon `shelf` or `later` |
-| Weekly Pull | horizon `shelf`/`later`/`soon`, or a target within 21 days, and no open shot |
+| **Weekly Pull** | **no open shot dated today or later — whatever the horizon** |
 | Daily Pull | an open week shot this week, and nothing on today yet |
 
-Invariant 1 is what makes invariant 2 hold: `now`/`next` are covered by their
-shot, everything else by the Shelf or a Pull.
+### The Weekly Pull is the safety net
+
+That row is what makes invariant 2 hold *structurally* rather than by
+coincidence, and it is deliberately unconditional on horizon.
+
+An adversarial review of an earlier draft found three separate ways to end up
+committed to nothing, all of which made a bullet invisible everywhere:
+
+- **A commitment goes stale with the clock.** Monday's open week shot is not a
+  plan by the following Monday. The earlier draft enforced invariant 1 only in
+  `moveToHorizon()` — at write time — so it was true when written and false a
+  week later, with invariant 2 resting on it.
+- **A shot is hit without finishing the bullet.** Five of twenty posts done
+  leaves a `now` bullet holding zero open shots on the happy path.
+- Any future way of arriving there.
+
+A commitment only counts while it is still ahead of you. Treating an abandoned
+one as "already handled" is precisely the lie `tensionOf` refuses to tell, so an
+overdue commitment now makes a bullet **more** likely to be offered, never
+invisible. Every view defers to `surfacesFor()` rather than re-deriving this —
+re-derivation is how the answers drifted apart in the first place.
 
 ---
 
@@ -101,9 +132,9 @@ Written out so no view has to invent behaviour.
 | Action | Effect |
 |---|---|
 | **Capture** | Creates the bullet. `now`/`next` also create the matching shot (invariant 1). |
-| **Mark done** (Simple) | `state: done`, closes its open shots. |
-| **Mark done** (Counted) | Completes the remaining amount, which makes it done. |
-| **Mark done** (Parent) | Completes every open child, which makes it done. |
+| **Mark done** (any shape) | Always closes the bullet's own open shots, never its completed ones. |
+| **Mark done** (Counted) | Also completes the remaining amount, so the derivation agrees. |
+| **Mark done** (Parent) | Also completes every open child, so the derivation agrees. |
 | **Reopen** (Simple) | `state: open`, reopens the shots completion closed, restores the shot its horizon implies. |
 | **Reopen** (Counted) | Reopens the last completed shot. |
 | **Reopen** (Parent) | `state: open`. Children untouched. |
