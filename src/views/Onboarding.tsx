@@ -8,29 +8,30 @@ import {
   type MotionValue,
   type Transition,
 } from 'motion/react';
-import {
-  Fragment,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Slab } from '../design/Slab';
 import { BigButton, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap, stagger } from '../design/springs';
-import { HORIZONS, HORIZON_META } from '../data/types';
+import { HORIZONS, HORIZON_META, type Horizon } from '../data/types';
 import { Logo } from '../design/Logo';
 
 /**
  * Onboarding.
  *
- * Five cards, and none of them is a tutorial. Clark and Angie have quit Notion,
- * Jira, Obsidian and a dozen checkbox apps precisely because those things ask to
- * be *maintained*, and a nine-screen product tour is the first instalment of
- * exactly that debt. So the copy is a headline and a sentence, the picture does
- * the explaining, and Skip is on screen from the first frame.
+ * Eight cards, one fact each. It used to be five, and each of those five sold
+ * the idea before teaching it — the first card opened by arguing with other
+ * trackers, which is a pitch aimed at someone still deciding. Clark and Angie
+ * built this thing. They are not the audience for a pitch.
+ *
+ * So: no card argues, no card carries a second sentence for rhythm, and every
+ * noun on screen is a word the running app actually prints. That last rule is
+ * why "shots" and "hits" are absent — the app stopped saying them (Today heads
+ * its finished section "Done · N"), and a tutorial that teaches vocabulary the
+ * next screen doesn't use is just debt with a friendly face.
+ *
+ * More cards, fewer words. Reading load is words per screen, not screen count,
+ * and Angie's system font is large enough that the old 40-word opener filled
+ * one.
  *
  * Everything here is static example data on purpose — no store, no Dexie, no
  * writes. Nothing you touch on the way in should end up in the shelf.
@@ -44,13 +45,30 @@ const SWIPE_VELOCITY = 480;
 const HUE_HALCYON = 250;
 const HUE_SUPERFUN = 25;
 
+/**
+ * Two days, not nine.
+ *
+ * The old idea card rendered `level="incoming" daysLeft={9}`, which the engine
+ * cannot produce: tensionOf only returns incoming inside INCOMING_WINDOW, which
+ * is 3. The one card carrying the whole premise was demonstrating an impossible
+ * state. At two days the badge is real, and — because moveToHorizon aims a
+ * bullet the moment it lands on NOW or NEXT — it genuinely goes dark for those
+ * two and stays lit for the other three. Card 3 leans on exactly that.
+ */
+const DEMO_DAYS = 2;
+const DEMO_TARGET = 'Fri 14 Aug';
+const AIMED: Horizon[] = ['now', 'next'];
+
 type CardProps = { active: boolean; reduced: boolean };
 
 const CARDS: { id: string; label: string; render: (p: CardProps) => ReactNode }[] = [
-  { id: 'idea', label: 'The idea', render: p => <IdeaCard {...p} /> },
-  { id: 'horizons', label: 'The five horizons', render: p => <HorizonsCard {...p} /> },
-  { id: 'pull', label: 'The Pull', render: p => <PullCard {...p} /> },
-  { id: 'shots', label: 'Shots', render: p => <ShotsCard {...p} /> },
+  { id: 'capture', label: 'Add a bullet', render: p => <CaptureCard {...p} /> },
+  { id: 'target', label: 'Targets', render: p => <TargetCard {...p} /> },
+  { id: 'horizons', label: 'When will you do it', render: p => <HorizonsCard {...p} /> },
+  { id: 'weekly', label: 'The Weekly Pull', render: p => <WeeklyCard {...p} /> },
+  { id: 'daily', label: 'The Daily Pull', render: p => <DailyCard {...p} /> },
+  { id: 'finish', label: 'Finishing', render: p => <FinishCard {...p} /> },
+  { id: 'counts', label: 'Counts', render: p => <CountsCard {...p} /> },
   { id: 'huddles', label: 'Huddles', render: p => <HuddlesCard {...p} /> },
 ];
 
@@ -198,7 +216,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               onClick={() => goTo(i)}
               aria-label={card.label}
               aria-current={i === index ? 'step' : undefined}
-              className="flex h-[var(--tap)] w-9 items-center justify-center"
+              // Eight dots now, so the hit target sheds the fixed 2.25rem width
+              // and shares the row instead — still a full --tap tall.
+              className="flex h-[var(--tap)] flex-1 max-w-9 items-center justify-center"
             >
               <span className="relative flex h-2 w-2 items-center justify-center">
                 <span
@@ -220,30 +240,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           ))}
         </nav>
 
+        {/* "Start", not "Take the first shot". That construction is the one
+            Clark rejected by name, it flavours a verb rather than a noun, and
+            it promised work on a button that actually opens sign-in. */}
         <BigButton onClick={() => (last ? onDone() : goTo(index + 1))}>
-          {last ? 'Take the first shot' : 'Next'}
+          {last ? 'Start' : 'Next'}
         </BigButton>
-
-        {/* Fixed height, so the tagline arriving on the last card doesn't shove
-            the button a line up the screen under the thumb that's about to
-            press it. */}
-        <div className="mt-3 flex h-4 items-center justify-center">
-          <AnimatePresence>
-            {last && (
-              <motion.p
-                key="tagline"
-                className="meta text-[var(--ink-3)] uppercase"
-                style={{ letterSpacing: '0.14em' }}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={reduced ? { duration: 0.01 } : settle}
-              >
-                No more dodging.
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </div>
       </footer>
     </motion.div>
   );
@@ -266,147 +268,281 @@ function Page({ children, hidden }: { children: ReactNode; hidden: boolean }) {
   );
 }
 
-function Head({
-  eyebrow,
-  title,
-  body,
-  grace,
-}: {
-  eyebrow: string;
-  title: string;
-  body: ReactNode;
-  grace?: string;
-}) {
+/**
+ * Eyebrow, headline, one sentence. There used to be a fourth slot — `grace` —
+ * holding an editorial line per card ("Twenty is a project. Three is a
+ * Tuesday."). Every one of them was a copywriter's aphorism restating the
+ * picture above it, so the slot is gone rather than emptied; an empty slot is
+ * an invitation to refill it.
+ */
+function Head({ eyebrow, title, body }: { eyebrow: string; title: string; body: ReactNode }) {
   return (
     <div>
       <p className="meta text-[var(--ink-3)] uppercase" style={{ letterSpacing: '0.14em' }}>
         {eyebrow}
       </p>
-      <h2 className="display mt-2.5 text-[2.15rem] text-[var(--ink)]">{title}</h2>
+      <h2 className="display mt-2.5 text-[2.15rem] leading-[1.08] text-[var(--ink)]">{title}</h2>
       <p className="mt-3.5 text-[1.0625rem] leading-relaxed text-[var(--ink-2)]">{body}</p>
-      {grace && (
-        <p className="editorial mt-2.5 text-[1.4rem] leading-snug text-[var(--ink-3)]">{grace}</p>
-      )}
     </div>
   );
 }
 
-/* -------------------------------------------------------------- 1 · the idea */
+/** The one-line caption that sits under an illustration. Never a second body. */
+function Caption({ children }: { children: ReactNode }) {
+  return <p className="meta mt-4 leading-snug text-[var(--ink-3)]">{children}</p>;
+}
+
+/* --------------------------------------------------------------- 1 · capture */
+
+const DEMO_TITLE = 'Halcyon rebrand deck';
 
 /**
- * The whole pitch in one card: two dates that every other tracker collapses
- * into one. The badge is the payoff, so it lands a beat after the card settles
- * rather than being already on when you arrive.
+ * How a bullet gets in — which the deck never showed. It opened on the concept
+ * of two dates, for an object the reader had not yet watched anyone create.
  */
-function IdeaCard({ active, reduced }: CardProps) {
+function CaptureCard({ active, reduced }: CardProps) {
+  const [typed, setTyped] = useState(reduced ? DEMO_TITLE.length : 0);
+  const tick = useRef<number>(undefined);
+
+  useEffect(() => {
+    if (!active) return;
+    if (reduced) {
+      setTyped(DEMO_TITLE.length);
+      return;
+    }
+    setTyped(0);
+    // A beat before it starts, so the placeholder is legible first — the point
+    // of the card is that you type into an empty field.
+    const start = window.setTimeout(() => {
+      tick.current = window.setInterval(() => {
+        setTyped(n => {
+          if (n < DEMO_TITLE.length) return n + 1;
+          window.clearInterval(tick.current);
+          return n;
+        });
+      }, 42);
+    }, 420);
+    return () => {
+      window.clearTimeout(start);
+      window.clearInterval(tick.current);
+    };
+  }, [active, reduced]);
+
+  const done = typed >= DEMO_TITLE.length;
+
+  return (
+    <>
+      <Head
+        eyebrow="New bullet"
+        title="Add a bullet."
+        body="A new bullet waits on the Shelf until you decide when to do it."
+      />
+
+      <div className="mt-8">
+        <Slab tone="raised">
+          <div className="px-6 py-6">
+            {/* The real capture sheet's own placeholder, so the first thing
+                taught is a string the app will actually show. */}
+            <p className="text-[1.35rem] leading-snug text-[var(--ink)]">
+              {typed === 0 ? (
+                <span className="text-[var(--ink-3)]">What is it?</span>
+              ) : (
+                DEMO_TITLE.slice(0, typed)
+              )}
+              {!done && !reduced && (
+                <motion.span
+                  aria-hidden
+                  className="ml-0.5 inline-block h-[1.1em] w-[2px] translate-y-[0.15em] bg-[var(--ink)]"
+                  animate={{ opacity: [1, 1, 0, 0] }}
+                  transition={{ duration: 1, repeat: Infinity, times: [0, 0.5, 0.5, 1] }}
+                />
+              )}
+            </p>
+          </div>
+        </Slab>
+
+        {/* The exact toast App.tsx fires on a Shelf save. Inert here. */}
+        <div className="mt-4 h-[var(--tap)]">
+          <AnimatePresence>
+            {done && (
+              <motion.div
+                className="flex items-center justify-between gap-3 rounded-[var(--r-md)] px-4 py-3"
+                style={{ background: 'var(--ink)', color: 'var(--bg)' }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={reduced ? { duration: 0.01 } : settle}
+              >
+                <span style={{ fontVariationSettings: "'wght' 600" }}>Saved to the Shelf</span>
+                <span className="meta uppercase opacity-60">Show</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- 2 · target */
+
+/**
+ * The example slab is deliberately NOT shared with card 3 via layoutId. Every
+ * page stays mounted, so two live elements would carry the same layoutId at
+ * once — the duplicate-layoutId trap already in AGENTS.md. Nothing is lost:
+ * the pages translate past each other, so a cross-page layout tween would not
+ * read anyway.
+ */
+function TargetCard({ active, reduced }: CardProps) {
   const t: Transition = reduced ? { duration: 0.01 } : settle;
 
   return (
     <>
       <Head
-        eyebrow="The idea"
-        title="A target and a horizon."
-        body="Every other tracker jams both into one date field, then paints the list red. Bullets keeps them apart — when it's due, and when you'll deal with it."
-        grace="Nine days out, filed under someday."
+        eyebrow="Target"
+        title="When it's due."
+        body="A target is a real deadline — not when you plan to do it."
       />
 
       <div className="mt-8">
-        <Slab hue={HUE_HALCYON} tone="raised">
-          <div className="px-6 py-6 pl-8">
-            {/* The badge lands a beat after the card settles. It is the payoff
-                of the two rows below it, so arriving already lit would make it
-                just another chip. */}
-            <div className="flex h-7 items-center gap-2.5">
-              <KindGlyph kind="task" />
-              <motion.span
-                initial={{ opacity: 0, scale: 0.72 }}
-                animate={active ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.72 }}
-                transition={active && !reduced ? { ...snap, delay: 0.45 } : t}
-              >
-                <TensionBadge level="incoming" daysLeft={9} />
-              </motion.span>
-            </div>
-
-            <h3 className="display mt-3 text-[1.4rem] leading-tight text-[var(--ink)]">
-              Halcyon rebrand deck
-            </h3>
-
-            <dl className="mt-6 space-y-3.5">
-              <Field label="Target">
-                <span className="text-[var(--ink)]" style={{ fontVariationSettings: "'wght' 620" }}>
-                  Fri 21 Aug
-                </span>
-                <span className="meta ml-2 text-[var(--ink-3)]">
-                  <span className="numeral">9</span>d out
-                </span>
-              </Field>
-              <Field label="Horizon">
-                <HorizonChip horizon="later" size="sm" active />
-              </Field>
-            </dl>
-          </div>
-        </Slab>
-
-        <p className="meta mt-4 leading-snug text-[var(--ink-3)]">
-          Bullets says so now, rather than the morning it goes wide.
-        </p>
+        <ExampleSlab
+          horizon={null}
+          badge
+          active={active}
+          reduced={reduced}
+          badgeTransition={active && !reduced ? { ...snap, delay: 0.45 } : t}
+        />
+        <Caption>Bullets only counts down once the target is close.</Caption>
       </div>
     </>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * The running example, shown the way a live list shows it: glyph, title, and
+ * one inline meta line. The old card laid it out as a form with "Target" and
+ * "Horizon" as dt labels — no screen in the app labels either field, and it
+ * printed the same date twice, once as a value and once as "9d out".
+ */
+function ExampleSlab({
+  horizon,
+  badge,
+  active,
+  reduced,
+  badgeTransition,
+}: {
+  horizon: Horizon | null;
+  badge: boolean;
+  active: boolean;
+  reduced: boolean;
+  badgeTransition?: Transition;
+}) {
   return (
-    <div className="flex items-center gap-4">
-      <dt className="meta w-[4.75rem] shrink-0 text-[var(--ink-3)] uppercase">{label}</dt>
-      <dd className="flex min-w-0 items-center">{children}</dd>
-    </div>
+    <Slab hue={HUE_HALCYON} tone="raised">
+      <div className="px-6 py-6 pl-8">
+        <div className="flex h-7 items-center gap-2.5">
+          <KindGlyph kind="task" />
+          {horizon && <HorizonChip horizon={horizon} size="sm" active />}
+          <AnimatePresence mode="popLayout">
+            {badge && (
+              <motion.span
+                key="badge"
+                initial={{ opacity: 0, scale: 0.72 }}
+                animate={active ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.72 }}
+                exit={{ opacity: 0, scale: 0.72 }}
+                transition={badgeTransition ?? (reduced ? { duration: 0.01 } : snap)}
+              >
+                <TensionBadge level="incoming" daysLeft={DEMO_DAYS} />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <h3 className="display mt-3 text-[1.4rem] leading-tight text-[var(--ink)]">{DEMO_TITLE}</h3>
+        <p className="meta mt-2 text-[var(--ink-2)]">Target · {DEMO_TARGET}</p>
+      </div>
+    </Slab>
   );
 }
 
-/* ---------------------------------------------------------- 2 · the horizons */
+/* -------------------------------------------------------------- 3 · horizons */
 
+/**
+ * The horizon, taught by consequence rather than by adjective.
+ *
+ * The old card listed five chips against five priority blurbs ("Super urgent",
+ * "As soon as we can") while its body insisted horizons were *not* priority —
+ * the card argued with itself. Now each chip states where the bullet lands, and
+ * the example above reacts: NOW and NEXT aim it, so its target badge goes dark;
+ * the other three leave it unaimed and lit. That is not a dramatisation, it is
+ * what moveToHorizon and tensionOf actually do.
+ *
+ * One caption at a time, too. Five blurbs at once is five blurbs on Angie's
+ * font size.
+ */
 function HorizonsCard({ active, reduced }: CardProps) {
+  const [picked, setPicked] = useState<Horizon>('shelf');
+
+  useEffect(() => {
+    if (!active) setPicked('shelf');
+  }, [active]);
+
+  const aimed = AIMED.includes(picked);
+
   return (
     <>
       <Head
-        eyebrow="The map"
-        title="Five horizons."
-        body="Not priority levels — distance. How far out a thing sits, and nothing more."
-        grace="Moving something is not failing at it."
+        eyebrow="When will you do it?"
+        title="Five answers."
+        body="Tap one to see where the bullet turns up."
       />
 
-      {/* Two grid columns rather than five rows of flex, so every blurb starts
-          on the same axis no matter how wide its chip renders. */}
-      <div className="mt-7 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3">
-        {HORIZONS.map((h, i) => {
-          const reveal = {
-            initial: { opacity: 0, y: 10 },
-            animate: active ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 },
-            transition: reduced
-              ? { duration: 0.01 }
-              : { ...settle, delay: active ? stagger(i, 0.05) : 0 },
-          };
-          return (
-            <Fragment key={h}>
-              <motion.div {...reveal}>
-                <HorizonChip horizon={h} size="lg" active />
-              </motion.div>
-              <motion.p
-                {...reveal}
-                className="text-[0.95rem] leading-snug text-[var(--ink-2)]"
-              >
-                {HORIZON_META[h].blurb}
-              </motion.p>
-            </Fragment>
-          );
-        })}
+      <div className="mt-7">
+        <div className="flex flex-wrap gap-2">
+          {HORIZONS.map((h, i) => (
+            <motion.button
+              key={h}
+              type="button"
+              onClick={() => setPicked(h)}
+              aria-pressed={picked === h}
+              whileTap={{ scale: 0.94 }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={active ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
+              transition={
+                reduced ? { duration: 0.01 } : { ...settle, delay: active ? stagger(i, 0.045) : 0 }
+              }
+            >
+              <HorizonChip horizon={h} size="lg" active={picked === h} />
+            </motion.button>
+          ))}
+        </div>
+
+        {/* Fixed two lines: SOON's caption wraps and the slab below must not
+            hop a line when you tap across. */}
+        <div className="mt-4 flex min-h-[2.9rem] items-start">
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={picked}
+              className="text-[1.0625rem] leading-snug text-[var(--ink-2)]"
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              transition={reduced ? { duration: 0.01 } : snap}
+            >
+              {HORIZON_META[picked].blurb}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+
+        <div className="mt-4">
+          <ExampleSlab horizon={picked} badge={!aimed} active={active} reduced={reduced} />
+        </div>
       </div>
     </>
   );
 }
 
-/* --------------------------------------------------------------- 3 · the Pull */
+/* ----------------------------------------------------------- 4 · weekly pull */
 
 const MINI_X = 74;
 const MINI_Y = 62;
@@ -419,8 +555,17 @@ const MINI_Y = 62;
  * an onboarding screen. Nested drag needs no special handling: motion's drag
  * lock is global, and the inner card claims it before the deck sees the
  * pointer.
+ *
+ * The stamps now say what the live deck says. They used to read "Pull in" and
+ * "Push out", words that appear on no screen in the app — you learned a
+ * vocabulary and then met three different buttons. The hint row underneath is
+ * gone with them: it printed the same three outcomes a second time, at rest,
+ * where the stamps already print them under your thumb.
  */
-function PullCard({ active, reduced }: CardProps) {
+// No `reduced` here: everything that moves on this card is the user's own
+// finger, and the spring-back is direct-manipulation feedback rather than
+// decoration.
+function WeeklyCard({ active }: CardProps) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-9, 0, 9]);
@@ -432,28 +577,22 @@ function PullCard({ active, reduced }: CardProps) {
   const pushStamp = useTransform(x, [-30, -MINI_X], [0, 1]);
   const shelveStamp = useTransform(y, [-30, -MINI_Y], [0, 1]);
 
-  const [said, setSaid] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!said) return;
-    const timer = setTimeout(() => setSaid(null), 1_700);
-    return () => clearTimeout(timer);
-  }, [said]);
-
   // Leaving the card mid-gesture shouldn't leave it parked off-centre.
   useEffect(() => {
     if (active) return;
     x.jump(0);
     y.jump(0);
-    setSaid(null);
   }, [active, x, y]);
 
   return (
     <>
       <Head
-        eyebrow="The ritual"
-        title="The Pull."
-        body="Once a week you pick the week off the Shelf. Every morning you pick today out of the week. One card at a time, out loud."
+        eyebrow="Once a week"
+        title="The Weekly Pull."
+        // Not "off the Shelf": the weekly deck also draws SOON, anything
+        // targeted inside three weeks, and anything open that has lost its
+        // commitment — the safety net the whole state model rests on.
+        body="It brings back everything you haven't committed to yet."
       />
 
       <div className="mt-7">
@@ -466,11 +605,6 @@ function PullCard({ active, reduced }: CardProps) {
           dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
           dragElastic={{ left: 1, right: 1, top: 1, bottom: 0.18 }}
           dragTransition={{ bounceStiffness: 340, bounceDamping: 32 }}
-          onDragEnd={(_, info) => {
-            if (info.offset.x > MINI_X) setSaid('Pulled in');
-            else if (info.offset.x < -MINI_X) setSaid('Pushed out to Later');
-            else if (info.offset.y < -MINI_Y) setSaid('Shelved');
-          }}
         >
           <Slab hue={HUE_SUPERFUN} tone="raised" className="h-full">
             <motion.span
@@ -497,14 +631,18 @@ function PullCard({ active, reduced }: CardProps) {
               <h3 className="display text-[1.5rem] leading-tight text-[var(--ink)]">
                 Draft the Q4 pitch
               </h3>
-              <p className="meta text-[var(--ink-2)]">
-                Target · Thu · <span className="numeral">6</span>d out
-              </p>
+              <p className="meta text-[var(--ink-2)]">Target · Thu</p>
             </div>
 
-            <MiniStamp label="Pull in" color="var(--hit)" tilt={-6} opacity={pullStamp} className="top-4 left-5" />
             <MiniStamp
-              label="Push out"
+              label="This week"
+              color="var(--hit)"
+              tilt={-6}
+              opacity={pullStamp}
+              className="top-4 left-5"
+            />
+            <MiniStamp
+              label="Later"
               color="var(--ink-3)"
               tilt={6}
               opacity={pushStamp}
@@ -520,40 +658,7 @@ function PullCard({ active, reduced }: CardProps) {
           </Slab>
         </motion.div>
 
-        <div className="relative mt-4 h-5">
-          <AnimatePresence initial={false} mode="wait">
-            {said ? (
-              <motion.p
-                key="said"
-                className="meta absolute inset-0 flex items-center justify-center text-[var(--ink)] uppercase"
-                style={{ fontVariationSettings: "'wght' 750", letterSpacing: '0.1em' }}
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={reduced ? { duration: 0.01 } : snap}
-              >
-                {said}
-              </motion.p>
-            ) : (
-              <motion.div
-                key="hint"
-                className="meta absolute inset-0 flex items-center justify-between text-[var(--ink-3)]"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={reduced ? { duration: 0.01 } : snap}
-              >
-                <span>← Push out</span>
-                <span>↑ Shelve</span>
-                <span>Pull in →</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <p className="editorial mt-4 text-[1.3rem] leading-snug text-[var(--ink-3)]">
-          Go on. That card actually moves.
-        </p>
+        <Caption>Drag the card.</Caption>
       </div>
     </>
   );
@@ -591,33 +696,205 @@ function MiniStamp({
   );
 }
 
-/* ------------------------------------------------------------------ 4 · shots */
+/* ------------------------------------------------------------ 5 · daily pull */
 
-const SHOT_TOTAL = 20;
-const SHOT_HIT = 3;
-const SHOT_LINED = 5;
-
-function ShotsCard({ active, reduced }: CardProps) {
+/**
+ * Deliberately still. The gesture was learned one card ago; this card's two
+ * facts are that the daily deck says different words, and that every swipe is
+ * also a button you can just press.
+ */
+function DailyCard({ active, reduced }: CardProps) {
   return (
     <>
       <Head
-        eyebrow="The unit"
-        title="One bullet, many shots."
-        body={
-          <>
-            “TikTok posts ×<span className="numeral">20</span>” is one line on the Shelf — and
-            three shots today, five on Thursday. Every one you land is a hit.
-          </>
-        }
-        grace="Twenty is a project. Three is a Tuesday."
+        eyebrow="Every morning"
+        title="The Daily Pull."
+        body="It only offers what's already in this week."
+      />
+
+      <div className="mt-7">
+        <Slab hue={HUE_SUPERFUN} tone="raised">
+          <div className="flex h-[122px] flex-col justify-between px-6 py-5 pl-8">
+            <div className="flex items-center gap-2.5">
+              <KindGlyph kind="task" />
+              <HorizonChip horizon="next" size="sm" active />
+            </div>
+            <h3 className="display text-[1.5rem] leading-tight text-[var(--ink)]">
+              Draft the Q4 pitch
+            </h3>
+          </div>
+        </Slab>
+
+        <div className="mt-2.5 flex gap-2.5">
+          {[
+            { label: 'Not today', tone: 'quiet' as const, grow: false },
+            { label: 'Shelve', tone: 'quiet' as const, grow: false },
+            { label: 'Do today', tone: 'hit' as const, grow: true },
+          ].map((b, i) => (
+            <motion.div
+              key={b.label}
+              className={`min-h-[var(--tap)] rounded-[var(--r-md)] px-3 py-3.5 text-center
+                          ${b.grow ? 'flex-[1.5]' : 'flex-1'}`}
+              style={{
+                background: b.tone === 'hit' ? 'var(--hit-soft)' : 'var(--surface-2)',
+                color: b.tone === 'hit' ? 'var(--hit)' : 'var(--ink-2)',
+                fontVariationSettings: "'wght' 700",
+                letterSpacing: '-0.01em',
+              }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={active ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+              transition={
+                reduced ? { duration: 0.01 } : { ...settle, delay: active ? stagger(i, 0.06) : 0 }
+              }
+            >
+              {b.label}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* The one fact no animation can show: daily-left calls no mutation at
+            all. The card just leaves the deck. */}
+        <Caption>Not today just skips it. It stays in the week.</Caption>
+      </div>
+    </>
+  );
+}
+
+/* --------------------------------------------------------------- 6 · finish */
+
+/** ShotCard's own numbers, so the gesture taught here has the real weight. */
+const FINISH_X = 130;
+const FINISH_VELOCITY = 650;
+
+/**
+ * Swiping a card right to finish it is the single most-used gesture in the app,
+ * performed every day, and the deck never mentioned it — it taught the Pull's
+ * swipe, used twice a week, and left this one to be discovered by accident.
+ */
+function FinishCard({ active, reduced }: CardProps) {
+  const [done, setDone] = useState(false);
+  const x = useMotionValue(0);
+  const flood = useTransform(x, [0, FINISH_X], [0, 1]);
+  const floodOpacity = useTransform(x, [0, 40, FINISH_X], [0, 0.35, 1]);
+  const tick = useTransform(x, [FINISH_X * 0.75, FINISH_X], [0, 1]);
+
+  useEffect(() => {
+    if (active) return;
+    setDone(false);
+    x.jump(0);
+  }, [active, x]);
+
+  return (
+    <>
+      <Head
+        eyebrow="Today"
+        title="Swipe right to finish."
+        body="Tap a finished card to put it back."
+      />
+
+      <div className="mt-7">
+        <AnimatePresence mode="wait">
+          {!done ? (
+            <motion.div
+              key="open"
+              className="touch-pan-y"
+              style={{ x }}
+              drag="x"
+              dragDirectionLock
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={{ left: 0.02, right: 0.7 }}
+              onDragEnd={(_, info) => {
+                // Distance or velocity, exactly as ShotCard decides it — a
+                // confident flick counts even when the finger barely travelled.
+                if (info.offset.x > FINISH_X || info.velocity.x > FINISH_VELOCITY) setDone(true);
+              }}
+              exit={{ opacity: 0 }}
+              transition={reduced ? { duration: 0.01 } : settle}
+            >
+              <Slab hue={HUE_SUPERFUN} tone="raised">
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-0 origin-left"
+                  style={{ scaleX: flood, opacity: floodOpacity, background: 'var(--hit-soft)' }}
+                />
+                <div className="relative flex items-center gap-3 px-6 py-5 pl-8">
+                  <KindGlyph kind="task" />
+                  <h3 className="display flex-1 text-[1.35rem] leading-tight text-[var(--ink)]">
+                    Draft the Q4 pitch
+                  </h3>
+                  <motion.span
+                    aria-hidden
+                    className="text-[1.4rem]"
+                    style={{ opacity: tick, color: 'var(--hit)' }}
+                  >
+                    ✓
+                  </motion.span>
+                </div>
+              </Slab>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="done"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={reduced ? { duration: 0.01 } : settle}
+            >
+              {/* The same heading TodayView renders, so the body's "finished
+                  card" has somewhere on screen to point at. */}
+              <h3 className="meta mb-2.5 px-1 text-[var(--ink-3)] uppercase">
+                Done · <span className="numeral">1</span>
+              </h3>
+              {/* Reset x as well as state: the card exited mid-drag, and
+                  without this it re-enters parked at the throw distance. */}
+              <Slab
+                hue={HUE_SUPERFUN}
+                tone="quiet"
+                onClick={() => {
+                  x.jump(0);
+                  setDone(false);
+                }}
+              >
+                <div className="flex items-center gap-3 px-6 py-5 pl-8">
+                  <KindGlyph kind="task" />
+                  <h3
+                    className="display flex-1 text-[1.35rem] leading-tight text-[var(--ink-3)]"
+                    style={{ textDecoration: 'line-through' }}
+                  >
+                    Draft the Q4 pitch
+                  </h3>
+                </div>
+              </Slab>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <Caption>{done ? 'Tap it.' : 'Drag the card right.'}</Caption>
+      </div>
+    </>
+  );
+}
+
+/* --------------------------------------------------------------- 7 · counts */
+
+const SHOT_TOTAL = 20;
+const SHOT_DONE = 3;
+const SHOT_LINED = 5;
+
+function CountsCard({ active, reduced }: CardProps) {
+  return (
+    <>
+      <Head
+        eyebrow="How many"
+        title="Twenty posts is one bullet."
+        body="The Pull asks how many you want this week."
       />
 
       <section className="mt-8">
         <div className="flex items-baseline justify-between">
-          <p className="meta text-[var(--ink-3)] uppercase">Progress</p>
+          <p className="meta text-[var(--ink-3)] uppercase">Halcyon TikTok posts</p>
           <p className="meta text-[var(--ink-2)]">
-            <span className="numeral text-[var(--ink)]">{SHOT_HIT}</span> of{' '}
-            <span className="numeral">{SHOT_TOTAL}</span> posts
+            <span className="numeral text-[var(--ink)]">{SHOT_DONE}</span> of{' '}
+            <span className="numeral">{SHOT_TOTAL}</span>
           </p>
         </div>
 
@@ -627,9 +904,9 @@ function ShotsCard({ active, reduced }: CardProps) {
         <div className="mt-3.5 flex flex-wrap gap-1.5">
           {Array.from({ length: SHOT_TOTAL }, (_, i) => {
             const fill =
-              i < SHOT_HIT
+              i < SHOT_DONE
                 ? 'var(--hit)'
-                : i < SHOT_HIT + SHOT_LINED
+                : i < SHOT_DONE + SHOT_LINED
                   ? // Not surface-3: against a surface-2 block it is a shade
                     // apart, and "committed" has to be visible across the grid.
                     'var(--line-strong)'
@@ -661,10 +938,10 @@ function ShotsCard({ active, reduced }: CardProps) {
 
         <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2">
           <Swatch color="var(--hit)">
-            <span className="numeral">{SHOT_HIT}</span> hit today
+            <span className="numeral">{SHOT_DONE}</span> done
           </Swatch>
           <Swatch color="var(--line-strong)">
-            <span className="numeral">{SHOT_LINED}</span> lined up Thursday
+            <span className="numeral">{SHOT_LINED}</span> this week
           </Swatch>
         </div>
       </section>
@@ -675,17 +952,13 @@ function ShotsCard({ active, reduced }: CardProps) {
 function Swatch({ color, children }: { color: string; children: ReactNode }) {
   return (
     <span className="meta inline-flex items-center gap-2 text-[var(--ink-2)]">
-      <span
-        aria-hidden
-        className="h-3 w-3 shrink-0 rounded-[4px]"
-        style={{ background: color }}
-      />
+      <span aria-hidden className="h-3 w-3 shrink-0 rounded-[4px]" style={{ background: color }} />
       {children}
     </span>
   );
 }
 
-/* ---------------------------------------------------------------- 5 · huddles */
+/* --------------------------------------------------------------- 8 · huddles */
 
 function HuddlesCard({ active, reduced }: CardProps) {
   const [moved, setMoved] = useState(false);
@@ -736,25 +1009,25 @@ function HuddlesCard({ active, reduced }: CardProps) {
   return (
     <>
       <Head
-        eyebrow="The two of you"
+        eyebrow="Huddles"
         title="Call a huddle."
-        body="Either of you can call one and it lands on both calendars — nothing to approve. Inside is one live board you're both moving things on."
+        body="You both see the same board. Items move from On the table to Decided."
       />
 
       <div className="mt-7">
         <LayoutGroup id="onboarding-huddle">
-          <Lane label="On the table" count={moved ? 0 : 1} empty="Nothing left to settle.">
+          {/* The board's real empty strings, not invented ones. */}
+          <Lane
+            label="On the table"
+            count={moved ? 0 : 1}
+            empty="Nothing on the table yet. Add what you want to talk about."
+          >
             {!moved && item}
           </Lane>
           <Lane label="Decided" count={moved ? 1 : 0} empty="Nothing decided yet.">
             {moved && item}
           </Lane>
         </LayoutGroup>
-
-        <p className="meta mt-4 leading-snug text-[var(--ink-3)]">
-          Wrapping it writes every decision back onto its bullet, so neither of you has to
-          reopen the room.
-        </p>
       </div>
     </>
   );
@@ -778,7 +1051,7 @@ function Lane({
       </h3>
       <div className="flex min-h-[74px] flex-col justify-center">
         {count === 0 ? (
-          <p className="editorial px-1 text-lg text-[var(--ink-3)]">{empty}</p>
+          <p className="editorial px-1 text-lg leading-snug text-[var(--ink-3)]">{empty}</p>
         ) : (
           children
         )}

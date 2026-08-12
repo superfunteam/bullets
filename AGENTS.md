@@ -189,6 +189,24 @@ but *do* check the browser, and check both themes and both text scales.
   streaming at 60s. Two users at a 1.5s live cadence is indistinguishable from
   realtime.
 
+- **Onboarding may only teach words the app actually prints.** It once taught
+  "Pull in" and "Push out" as the deck's three directions; the live deck says
+  "This week"/"Later" (weekly) and "Do today"/"Not today" (daily), so you
+  learned a vocabulary and then met three different buttons. Same for "shots"
+  and "hits" — real domain nouns in the code, but no user-visible string
+  outside onboarding uses them, and Today heads its finished section "Done · N".
+  Before writing onboarding copy, grep `src/views` for the string. Teaching
+  vocabulary the next screen doesn't use is debt with a friendly face.
+- **Nothing in onboarding sells.** Clark and Angie built this. Copy that argues
+  the product's merit against other trackers is aimed at nobody in the room.
+  One fact per card, one sentence, plain verbs — see the header comment in
+  `Onboarding.tsx`.
+- **Don't render a tension state the engine cannot produce.** The idea card
+  used to show `level="incoming" daysLeft={9}`; `INCOMING_WINDOW` is 3, so
+  `tensionOf` returns calm at 9 days and the badge never appears in real life.
+  If you hand-build a `TensionBadge` for an illustration, check it against
+  `selectors.ts` first.
+
 ---
 
 ## Where the reasoning lives
