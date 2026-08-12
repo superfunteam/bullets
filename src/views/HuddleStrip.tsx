@@ -1,13 +1,15 @@
 import { Slab } from '../design/Slab';
 import { timeOfDay } from '../lib/dates';
-import { personName, type Huddle } from '../data/types';
+import { hasAnswered, personName, responseOf, type Huddle } from '../data/types';
 import { getActor } from '../data/mutations';
 
 /** A huddle as it appears inline in Today and Week, at its time. */
 export function HuddleStrip({ huddle, onOpen }: { huddle: Huddle; onOpen: () => void }) {
   const me = getActor();
-  const mine = huddle.responses[me];
-  const needsMe = !mine || mine.status === 'nudge';
+  const mine = responseOf(huddle, me);
+  // "New" means I haven't actually said anything yet — the auto-confirmation
+  // written when it was called doesn't count as an answer.
+  const needsMe = !hasAnswered(huddle, me) || mine?.status === 'nudge';
   const live = huddle.status === 'live';
 
   return (

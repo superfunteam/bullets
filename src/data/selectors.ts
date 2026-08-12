@@ -35,8 +35,21 @@ export function tensionOf(bullet: Bullet, shots: Shot[], today: string): Tension
 
   const live = shots.filter(s => !s.deletedAt && s.state === 'open');
 
-  // Committed to a specific day, or to a week that starts before the target.
-  const aimed = live.some(s => s.scope === 'day' || daysUntil(today, s.date) <= daysLeft);
+  /**
+   * "Aimed" means there is a live commitment that still lands between now and
+   * the target.
+   *
+   * The date has to be bounded at BOTH ends. An open shot dated last Monday is
+   * a commitment that was made and then abandoned — treating it as aim is how
+   * the app ends up reassuring you about work nobody has touched in a week,
+   * which is exactly the lie every other tracker tells.
+   */
+  const aimed = live.some(s => {
+    const start = daysUntil(today, s.date);
+    // A week shot covers its 7 days, so it reaches 6 days past its Monday.
+    const end = s.scope === 'week' ? start + 6 : start;
+    return end >= 0 && start <= daysLeft;
+  });
   if (aimed) return { level: 'calm', daysLeft };
 
   if (daysLeft <= INCOMING_WINDOW && daysLeft < REACH[bullet.horizon]) {
@@ -54,11 +67,23 @@ export function progressOf(bullet: Bullet, shots: Shot[]): { done: number; total
   return { done: Math.min(done, total), total };
 }
 
-/** How much of a counted bullet has not yet been committed to any day. */
-export function unclaimedOf(bullet: Bullet, shots: Shot[]): number {
+/**
+ * How much of a counted bullet has not yet been claimed at a given scope.
+ *
+ * Scope matters and cannot be collapsed. The Daily Pull draws *out of* the
+ * week's commitment, so a week shot of 10 and a day shot of 5 represent 10
+ * posts committed, not 15. Summing both made a 20-post bullet report 5
+ * unclaimed when 10 were genuinely outstanding, and after a few pulls it hit
+ * zero — which silently collapsed the stepper and pulled in 1 at a time.
+ */
+export function unclaimedOf(
+  bullet: Bullet,
+  shots: Shot[],
+  scope: 'day' | 'week' = 'day',
+): number {
   const total = bullet.count?.total ?? 1;
   const claimed = shots
-    .filter(s => !s.deletedAt)
+    .filter(s => !s.deletedAt && s.scope === scope)
     .reduce((sum, s) => sum + (s.amount ?? 1), 0);
   return Math.max(0, total - claimed);
 }

@@ -43,23 +43,50 @@ export async function ensureNotificationPermission(): Promise<boolean> {
  * would overflow. Hash the uuid into a small stable number instead, which also
  * means rescheduling replaces rather than duplicates.
  */
+const ID_SPACE = 200_000_000;
+const SLOTS = 10;
+
 function idFor(huddleId: string, slot: number): number {
   let h = 0;
   for (let i = 0; i < huddleId.length; i++) h = (h * 31 + huddleId.charCodeAt(i)) | 0;
-  return Math.abs(h % 200_000_000) * 10 + slot;
+  return Math.abs(h % ID_SPACE) * SLOTS + slot;
 }
 
-export async function scheduleHuddleReminders(huddles: Huddle[]): Promise<void> {
-  if (!(await ensureNotificationPermission())) return;
+/** Ids in our reserved band, so a blanket cancel never touches other features. */
+const isOurs = (id: number): boolean => id > 0 && id < ID_SPACE * SLOTS;
 
+/** Last scheduled set, so a no-op sync doesn't tear down working alarms. */
+let lastSignature = '';
+
+export async function scheduleHuddleReminders(huddles: Huddle[]): Promise<void> {
   const now = Date.now();
   const upcoming = huddles.filter(h => h.status === 'scheduled' && h.startsAt > now);
 
-  // Clear ours first so a rescheduled or cancelled huddle doesn't leave a ghost.
+  /**
+   * This runs after EVERY sync — about 40 times a minute while a live huddle
+   * board is open. Rescheduling unconditionally meant constantly tearing down
+   * and re-registering every alarm, and between the cancel and the schedule
+   * there was a real window with zero alarms registered. If Android killed the
+   * process in that window, every reminder was simply gone.
+   *
+   * Only touch the OS when the set actually changed.
+   */
+  const signature = upcoming
+    .map(h => `${h.id}:${h.startsAt}:${h.title ?? ''}`)
+    .sort()
+    .join('|');
+  if (signature === lastSignature) return;
+
+  if (!(await ensureNotificationPermission())) return;
+
+  // Cancel only ids we own. A blanket cancel would silently delete any other
+  // notification the app ever schedules.
+  const ours = new Set(upcoming.flatMap(h => [idFor(h.id, 1), idFor(h.id, 2)]));
   const existing = await LocalNotifications.getPending();
-  if (existing.notifications.length) {
-    await LocalNotifications.cancel({ notifications: existing.notifications });
-  }
+  const stale = existing.notifications.filter(n => isOurs(n.id) && !ours.has(n.id));
+  if (stale.length) await LocalNotifications.cancel({ notifications: stale });
+
+  lastSignature = signature;
 
   const notifications = upcoming.flatMap(h => {
     const title = h.title ?? 'Huddle';
@@ -93,18 +120,40 @@ export async function scheduleHuddleReminders(huddles: Huddle[]): Promise<void> 
 }
 
 /**
- * Revoking the exact-alarm setting restarts the app AND deletes anything
- * scheduled exactly, so reminders must be re-verified whenever we come back to
- * the foreground rather than assumed to still exist.
+ * Exact alarms are a SEPARATE grant from POST_NOTIFICATIONS, and on Android 14+
+ * a fresh install does not have it. Without it every reminder is registered as
+ * inexact and Doze batches it to roughly one wakeup per 9 minutes — a "huddle
+ * in 30 minutes" warning can land after the huddle already started, which is
+ * the whole feature failing silently on the default install path.
+ *
+ * Nothing else surfaces this: notification permission is granted, scheduling
+ * resolves fine, and only the timing is quietly wrong. So we check it, and ask.
+ *
+ * Revoking it later restarts the app and deletes exactly-scheduled
+ * notifications, which is why this is re-checked on resume rather than once.
  */
-export async function verifyExactAlarms(): Promise<boolean> {
+export async function ensureExactAlarms(prompt = false): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
     const s = await LocalNotifications.checkExactNotificationSetting();
-    return s.exact_alarm === 'granted';
+    if (s.exact_alarm === 'granted') return true;
+    // Opens Settings > Alarms & reminders. There is no in-app grant for this.
+    if (prompt) await LocalNotifications.changeExactNotificationSetting();
+    return false;
   } catch {
     return true; // Android < 12 has no such setting.
   }
+}
+
+/**
+ * Call on app resume. If the grant was revoked the OS dropped our alarms, so
+ * force the next scheduleHuddleReminders() to actually re-register rather than
+ * short-circuit on an unchanged signature.
+ */
+export async function revalidateReminders(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  const ok = await ensureExactAlarms(false);
+  if (!ok) lastSignature = '';
 }
 
 export function onNotificationTap(navigate: (route: string) => void): void {

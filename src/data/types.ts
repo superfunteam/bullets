@@ -83,6 +83,12 @@ export type HuddleResponse = {
   /** For 'nudge' — a counter-offer time. */
   proposedAt?: number;
   at: number;
+  /**
+   * True for the auto-confirmation written when the huddle was called, false
+   * once that person has actually said something. Lets the UI tell "presumed
+   * in" apart from "said in", without a second accept step.
+   */
+  auto?: boolean;
 };
 
 export type Huddle = Entity & {
@@ -91,7 +97,31 @@ export type Huddle = Entity & {
   durationMin: number;
   calledBy: Person;
   status: 'scheduled' | 'live' | 'done' | 'cancelled';
-  responses: Partial<Record<Person, HuddleResponse>>;
+  /**
+   * One field per person, NOT a single `responses` map.
+   *
+   * Last-write-wins resolves per field, so a combined map means whoever writes
+   * second silently erases the other's reply: Angie declines with a note, Clark
+   * confirms a second later from a device that hasn't pulled her op yet, and
+   * her decline is gone on both phones. Separate fields make the two replies
+   * genuinely independent.
+   */
+  responseClark?: HuddleResponse;
+  responseAngie?: HuddleResponse;
+};
+
+export const RESPONSE_FIELD: Record<Person, 'responseClark' | 'responseAngie'> = {
+  clark: 'responseClark',
+  angie: 'responseAngie',
+};
+
+export const responseOf = (h: Huddle, p: Person): HuddleResponse | undefined =>
+  h[RESPONSE_FIELD[p]];
+
+/** Everyone who has actually said something, as opposed to being presumed in. */
+export const hasAnswered = (h: Huddle, p: Person): boolean => {
+  const r = responseOf(h, p);
+  return Boolean(r) && r!.auto !== true;
 };
 
 export type HuddleItem = Entity & {

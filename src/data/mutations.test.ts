@@ -18,7 +18,9 @@ import {
   wrapHuddle,
 } from './mutations';
 import { pending } from './outbox';
-import type { Bullet, Huddle, Shot } from './types';
+import { applyLocal } from './mutations';
+import { seedIfEmpty } from './seed';
+import { hasAnswered, responseOf, type Bullet, type Huddle, type Shot } from './types';
 
 const bulletOf = async (id: string) =>
   (await db.bullets.get(id)) as unknown as Bullet;
@@ -138,8 +140,10 @@ describe('huddles', () => {
     const id = await callHuddle({ startsAt: Date.now() + 3_600_000, calledBy: 'angie' });
     const h = (await db.huddles.get(id)) as unknown as Huddle;
     expect(h.status).toBe('scheduled');
-    expect(h.responses.angie?.status).toBe('in');
-    expect(h.responses.clark?.status).toBe('in');
+    expect(responseOf(h, 'angie')?.status).toBe('in');
+    expect(responseOf(h, 'clark')?.status).toBe('in');
+    // Presumed in, not stated — this is what the unread badge keys off.
+    expect(hasAnswered(h, 'clark')).toBe(false);
   });
 
   it('keeps the huddle scheduled when one person nudges', async () => {
@@ -147,8 +151,9 @@ describe('huddles', () => {
     await respondToHuddle(id, { status: 'nudge', note: 'mid-flow', proposedAt: Date.now() + 7_200_000 }, 'clark');
     const h = (await db.huddles.get(id)) as unknown as Huddle;
     expect(h.status).toBe('scheduled');
-    expect(h.responses.clark?.status).toBe('nudge');
-    expect(h.responses.clark?.note).toBe('mid-flow');
+    expect(responseOf(h, 'clark')?.status).toBe('nudge');
+    expect(responseOf(h, 'clark')?.note).toBe('mid-flow');
+    expect(hasAnswered(h, 'clark')).toBe(true);
   });
 
   it('moves a decided item into the decided lane with its note', async () => {
@@ -188,5 +193,93 @@ describe('huddles', () => {
     await addHuddleItem(hid, { bulletId: bullet });
     await wrapHuddle(hid);
     expect((await bulletOf(bullet)).note).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regressions from the 2026-08-12 audit. Each of these silently corrupted data
+// or silently dropped a user action, so each gets a permanent test.
+// ---------------------------------------------------------------------------
+
+describe('clock skew between the two devices', () => {
+  it('lets a local edit win after a peer op arrives from a faster clock', async () => {
+    const hid = await callHuddle({ startsAt: Date.now() + 3_600_000 });
+    const item = await addHuddleItem(hid, { text: 'Cadence' });
+
+    // Angie's phone is a minute ahead. Her op lands with a far-future ts.
+    await applyLocal([
+      {
+        opId: 'peer-1',
+        entity: 'huddleItem',
+        entityId: item,
+        field: 'lane',
+        value: 'decided',
+        ts: Date.now() + 60_000,
+        actor: 'angie',
+      },
+    ]);
+    expect(((await db.huddleItems.get(item)) as unknown as { lane: string }).lane).toBe('decided');
+
+    // Clark taps undecide on his slower device. It must still take effect.
+    await undecideItem(item);
+    expect(((await db.huddleItems.get(item)) as unknown as { lane: string }).lane).toBe('table');
+  });
+});
+
+describe('concurrent huddle responses', () => {
+  it('does not let one person clobber the other', async () => {
+    const hid = await callHuddle({ startsAt: Date.now() + 3_600_000, calledBy: 'angie' });
+
+    // Angie declines with a note.
+    await respondToHuddle(hid, { status: 'out', note: 'sick' }, 'angie');
+    // Clark, whose device had not yet pulled her op, confirms a moment later.
+    await respondToHuddle(hid, { status: 'in' }, 'clark');
+
+    const h = (await db.huddles.get(hid)) as unknown as Huddle;
+    expect(responseOf(h, 'clark')?.status).toBe('in');
+    // Angie's decline and her reason must both survive.
+    expect(responseOf(h, 'angie')?.status).toBe('out');
+    expect(responseOf(h, 'angie')?.note).toBe('sick');
+  });
+});
+
+describe('wrapHuddle', () => {
+  it('is idempotent, so wrapping twice does not duplicate the decision', async () => {
+    const bullet = await createBullet({ title: 'TikTok posts' });
+    const hid = await callHuddle({ startsAt: new Date(2026, 7, 12, 10).getTime() });
+    const item = await addHuddleItem(hid, { bulletId: bullet });
+    await decideItem(item, 'Three a week');
+
+    await wrapHuddle(hid);
+    await wrapHuddle(hid);
+
+    const note = (await bulletOf(bullet)).note ?? '';
+    expect(note.match(/Three a week/g)).toHaveLength(1);
+  });
+
+  it('stamps the local date, not the UTC one, for an evening huddle', async () => {
+    const bullet = await createBullet({ title: 'Evening decision' });
+    // 8pm local on Aug 12 is Aug 13 in UTC for any timezone behind it.
+    const hid = await callHuddle({ startsAt: new Date(2026, 7, 12, 20, 0).getTime() });
+    const item = await addHuddleItem(hid, { bulletId: bullet });
+    await decideItem(item, 'Ship it');
+    await wrapHuddle(hid);
+
+    expect((await bulletOf(bullet)).note).toContain('Huddle 2026-08-12:');
+  });
+});
+
+describe('seeding', () => {
+  it('uses stable ids so the second device does not duplicate the clients', async () => {
+    await db.clients.clear();
+    await seedIfEmpty();
+    const first = (await db.clients.toArray()).map(c => c.id).sort();
+
+    // Angie's fresh device seeds against its own empty table.
+    await db.clients.clear();
+    await seedIfEmpty();
+    const second = (await db.clients.toArray()).map(c => c.id).sort();
+
+    expect(second).toEqual(first);
   });
 });

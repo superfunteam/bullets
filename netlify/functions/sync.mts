@@ -67,10 +67,24 @@ export default async (req: Request) => {
     `;
   }
 
+  /**
+   * The overlap window is load-bearing, not belt-and-braces.
+   *
+   * `seq` is a bigserial, and sequence values are allocated BEFORE commit. So a
+   * reader can see seq 503 while 500-502 are still uncommitted, advance its
+   * cursor past them, and never be offered them again — Angie's board would
+   * silently lose three of Clark's edits, permanently, with no error anywhere.
+   *
+   * Rather than lock or chase transaction snapshots, re-deliver anything
+   * written in the last 30 seconds. Re-delivery is free because applyOp is
+   * idempotent, and 30s comfortably covers the gap between allocation and
+   * commit at our volume.
+   */
   const rows = (await db.sql`
     select seq, op_id, entity, entity_id, field, value, ts, actor
     from ops
     where seq > ${since}
+       or created_at > now() - interval '30 seconds'
     order by seq asc
     limit ${MAX_OPS_PER_PULL}
   `) as Array<Record<string, unknown>>;

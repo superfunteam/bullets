@@ -112,3 +112,45 @@ describe('unclaimedOf', () => {
     expect(unclaimedOf(b, [shot({ amount: 9 })])).toBe(0);
   });
 });
+
+// Regressions from the 2026-08-12 audit.
+
+describe('abandoned commitments', () => {
+  it('does not treat an open shot dated in the past as aim', () => {
+    // Committed last Monday, never done. Target is Friday. That is not "aimed".
+    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const stale = shot({ date: '2026-08-03', scope: 'day' });
+    expect(tensionOf(b, [stale], '2026-08-12').level).toBe('incoming');
+  });
+
+  it('still treats a shot on today as aim', () => {
+    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    expect(tensionOf(b, [shot({ date: '2026-08-12' })], '2026-08-12').level).toBe('calm');
+  });
+
+  it('treats the current week as aim even though its Monday has passed', () => {
+    const b = bullet({ deadline: '2026-08-14', horizon: 'next' });
+    const weekShot = shot({ scope: 'week', date: '2026-08-10' });
+    expect(tensionOf(b, [weekShot], '2026-08-12').level).toBe('calm');
+  });
+
+  it('does not treat a week that ended before today as aim', () => {
+    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const oldWeek = shot({ scope: 'week', date: '2026-07-27' });
+    expect(tensionOf(b, [oldWeek], '2026-08-12').level).toBe('incoming');
+  });
+});
+
+describe('unclaimedOf scope', () => {
+  it('does not double-count a week claim and the day claims drawn from it', () => {
+    const b = bullet({ count: { total: 20, unit: 'posts' } });
+    const shots = [
+      shot({ id: 'w', scope: 'week', date: '2026-08-10', amount: 10 }),
+      shot({ id: 'd', scope: 'day', date: '2026-08-12', amount: 5 }),
+    ];
+    // 10 committed for the week leaves 10 unclaimed at week scope.
+    expect(unclaimedOf(b, shots, 'week')).toBe(10);
+    // 5 committed today leaves 15 for other days.
+    expect(unclaimedOf(b, shots, 'day')).toBe(15);
+  });
+});

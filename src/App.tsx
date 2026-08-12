@@ -18,7 +18,7 @@ import { startSync } from './sync/client';
 import { useHuddles } from './data/store';
 import { getActor } from './data/mutations';
 import { seedIfEmpty } from './data/seed';
-import type { Person } from './data/types';
+import { hasAnswered, type Person } from './data/types';
 
 type Overlay =
   | { kind: 'none' }
@@ -37,14 +37,16 @@ export function App() {
   const huddles = useHuddles();
   const me = getActor();
 
-  // A huddle the other person called that I have not explicitly answered.
+  // A huddle the other person called that I have not actually answered yet.
+  // Keyed on hasAnswered rather than the response value: every huddle starts
+  // auto-confirmed as 'in', so testing for 'in' meant tapping In left the
+  // predicate true and the badge could never be cleared.
   const pendingHuddles = huddles.filter(
     h =>
       h.status === 'scheduled' &&
       h.startsAt > Date.now() &&
       h.calledBy !== me &&
-      (h.responses[me]?.status ?? 'in') === 'in' &&
-      !h.responses[me]?.note,
+      !hasAnswered(h, me),
   ).length;
 
   useEffect(() => {

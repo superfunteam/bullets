@@ -15,7 +15,16 @@ import {
 } from '../data/mutations';
 import { useBullets, useClients, useHuddle, useHuddleItems } from '../data/store';
 import { relativeDay, timeOfDay, toDay } from '../lib/dates';
-import { PEOPLE, otherPerson, personName, type Bullet, type Client, type HuddleItem, type Person } from '../data/types';
+import {
+  PEOPLE,
+  otherPerson,
+  personName,
+  responseOf,
+  type Bullet,
+  type Client,
+  type HuddleItem,
+  type Person,
+} from '../data/types';
 
 /**
  * The huddle board. A live shared surface, not a document.
@@ -110,9 +119,20 @@ export function HuddleBoard({ huddleId, onClose }: { huddleId: string; onClose: 
 
   const upcoming = huddle.status === 'scheduled' && huddle.startsAt > Date.now();
   const wrapped = huddle.status === 'done';
-  const theirs = huddle.responses[otherPerson(me)];
+  const theirs = responseOf(huddle, otherPerson(me));
 
   return (
+    // Fixed overlay, not document flow. App keeps the tab view mounted behind
+    // this, so a plain container renders the entire board off-screen below it —
+    // tapping a huddle looks like a dead control.
+    <motion.div
+      className="fixed inset-0 z-50 overflow-y-auto bg-[var(--bg)] hide-scrollbar"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 12 }}
+      transition={settle}
+      style={{ paddingTop: 'var(--inset-top)' }}
+    >
     <div className="mx-auto w-full max-w-2xl px-4 pb-40">
       <header className="pt-6 pb-6">
         <div className="mb-5 flex items-center justify-between gap-3">
@@ -170,7 +190,7 @@ export function HuddleBoard({ huddleId, onClose }: { huddleId: string; onClose: 
         <ResponseBar
           huddleId={huddleId}
           startsAt={huddle.startsAt}
-          mine={huddle.responses[me]?.status}
+          mine={responseOf(huddle, me)?.status}
         />
       )}
 
@@ -222,6 +242,7 @@ export function HuddleBoard({ huddleId, onClose }: { huddleId: string; onClose: 
         )}
       </div>
     </div>
+    </motion.div>
   );
 }
 

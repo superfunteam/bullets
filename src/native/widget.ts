@@ -41,15 +41,20 @@ export async function publishWidget(): Promise<void> {
     .map(s => clean<Shot>(s));
 
   const open = shots.filter(s => s.state === 'open');
-  const bullets = await db.bullets.bulkGet(open.map(s => s.bulletId));
+  const raw = await db.bullets.bulkGet(open.map(s => s.bulletId));
+
+  // The widget must agree with Today. Without this it counts and names bullets
+  // that were called off or deleted, so the home screen says "4 shots today"
+  // while the app shows two — and the widget is the thing you glance at.
+  const live = raw
+    .filter(Boolean)
+    .map(b => clean<Bullet>(b!))
+    .filter(b => !b.deletedAt && b.state === 'open');
 
   const payload: WidgetPayload = {
     date,
-    openCount: open.length,
-    titles: bullets
-      .filter(Boolean)
-      .slice(0, 4)
-      .map(b => clean<Bullet>(b!).title),
+    openCount: live.length,
+    titles: live.slice(0, 4).map(b => b.title),
     updatedAt: Date.now(),
   };
 
