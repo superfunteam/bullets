@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { db, ENTITY_TABLES } from '../data/db';
 import { enqueue, pending } from '../data/outbox';
-import { setPace, syncOnce, currentInterval, presence } from './client';
+import { setPace, syncOnce, currentInterval, presence, syncState } from './client';
 import type { Op } from '../data/ops';
 
 const op = (over: Partial<Op> = {}): Op => ({
@@ -18,22 +18,28 @@ const op = (over: Partial<Op> = {}): Op => ({
 /** Stub /api/sync with a queue of canned responses, recording each request. */
 function stubSync(pages: { seq: number; ops: Op[]; presence?: string[] }[]) {
   const calls: { since: number; ops: Op[]; context: string | null }[] = [];
+  const urls: string[] = [];
   let i = 0;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (_url: string, init: { body: string }) => {
+    vi.fn(async (url: string, init: { body: string }) => {
+      urls.push(url);
+      if (url.includes('/api/auth')) {
+        return new Response(JSON.stringify({ person: 'clark', token: 'clark.tok' }), { status: 200 });
+      }
       calls.push(JSON.parse(init.body));
       const page = pages[Math.min(i, pages.length - 1)];
       i += 1;
       return new Response(JSON.stringify(page), { status: 200 });
     }),
   );
-  return calls;
+  return Object.assign(calls, { urls });
 }
 
 beforeEach(async () => {
   await Promise.all([...ENTITY_TABLES.map(t => t.clear()), db.outbox.clear(), db.meta.clear()]);
   localStorage.setItem('bullets.token', 'clark.test-token');
+  localStorage.setItem('bullets.person', 'clark');
   setPace('idle', null);
 });
 
@@ -117,11 +123,55 @@ describe('syncOnce', () => {
     expect(calls[1].ops).toHaveLength(0);
   });
 
-  it('does nothing when there is no token', async () => {
+  it('mints a token on demand rather than silently doing nothing', async () => {
+    // The bug this guards: a device that signed in while offline had an
+    // identity but no token, and sync returned early forever with no error
+    // anywhere. Writes piled up locally and never reached the other phone.
     localStorage.removeItem('bullets.token');
+    localStorage.setItem('bullets.person', 'clark');
+    const calls = stubSync([{ seq: 1, ops: [] }]);
+
+    await syncOnce();
+
+    expect(calls.urls.some(u => u.includes('/api/auth'))).toBe(true);
+    expect(calls.length).toBe(1);
+    expect(localStorage.getItem('bullets.token')).toBe('clark.tok');
+  });
+
+  it('does nothing when nobody has chosen an identity', async () => {
+    localStorage.removeItem('bullets.token');
+    localStorage.removeItem('bullets.person');
     const calls = stubSync([{ seq: 1, ops: [] }]);
     await syncOnce();
     expect(calls).toHaveLength(0);
+  });
+
+  it('re-mints once when the server rejects the token', async () => {
+    localStorage.setItem('bullets.token', 'stale');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/auth')) {
+        return new Response(JSON.stringify({ token: 'fresh' }), { status: 200 });
+      }
+      return new Response('Unauthorized', { status: 401 });
+    }));
+
+    await syncOnce();
+    // The stale token is dropped so the next tick mints a fresh one.
+    expect(localStorage.getItem('bullets.token')).toBeNull();
+  });
+
+  it('reports a failure instead of swallowing it', async () => {
+    localStorage.setItem('bullets.token', 'clark.tok');
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/auth')) {
+        return new Response(JSON.stringify({ token: 'clark.tok' }), { status: 200 });
+      }
+      throw new Error('network down');
+    }));
+
+    await syncOnce().catch(() => {});
+    expect(syncState().status).not.toBe('ok');
+    expect(syncState().error).toBeTruthy();
   });
 });
 

@@ -1,5 +1,6 @@
 import type { Config } from '@netlify/functions';
 import { mint } from '../lib/auth.mts';
+import { isPreflight, json, preflight, text } from '../lib/http.mts';
 
 /**
  * Identity, not authentication.
@@ -14,23 +15,25 @@ import { mint } from '../lib/auth.mts';
  * shared secret here before minting. Nothing else in the stack changes.
  */
 export default async (req: Request) => {
+  if (isPreflight(req)) return preflight();
+
   const secret = process.env.BULLETS_SECRET;
   if (!secret) {
-    return new Response('Server not configured: set BULLETS_SECRET', { status: 500 });
+    return text('Server not configured: set BULLETS_SECRET', 500);
   }
 
   let body: { person?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response('Bad request', { status: 400 });
+    return text('Bad request', 400);
   }
 
   if (body.person !== 'clark' && body.person !== 'angie') {
-    return new Response('Unknown person', { status: 400 });
+    return text('Unknown person', 400);
   }
 
-  return Response.json({
+  return json({
     person: body.person,
     token: await mint(body.person, secret),
   });
@@ -38,7 +41,7 @@ export default async (req: Request) => {
 
 export const config: Config = {
   path: '/api/auth',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   // Costs the two of us nothing and stops anyone cheaply hammering it.
   rateLimit: { windowSize: 60, windowLimit: 30 },
 };

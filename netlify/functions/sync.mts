@@ -1,6 +1,7 @@
 import { getDatabase } from '@netlify/database';
 import type { Config } from '@netlify/functions';
 import { requirePerson } from '../lib/auth.mts';
+import { isPreflight, json, preflight, text } from '../lib/http.mts';
 
 type WireOp = {
   opId: string;
@@ -25,14 +26,16 @@ const MAX_OPS_PER_PULL = 2000;
  * coordination between the two clients.
  */
 export default async (req: Request) => {
+  if (isPreflight(req)) return preflight();
+
   const person = await requirePerson(req);
-  if (!person) return new Response('Unauthorized', { status: 401 });
+  if (!person) return text('Unauthorized', 401);
 
   let body: { since?: number; ops?: WireOp[]; context?: string | null };
   try {
     body = await req.json();
   } catch {
-    return new Response('Bad request', { status: 400 });
+    return text('Bad request', 400);
   }
 
   const since = Number(body.since ?? 0);
@@ -96,7 +99,7 @@ export default async (req: Request) => {
       `) as Array<{ person: string }>)
     : [];
 
-  return Response.json({
+  return json({
     seq: rows.length ? Number(rows[rows.length - 1].seq) : since,
     ops: rows.map(r => ({
       opId: r.op_id,
@@ -113,5 +116,5 @@ export default async (req: Request) => {
 
 export const config: Config = {
   path: '/api/sync',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
 };

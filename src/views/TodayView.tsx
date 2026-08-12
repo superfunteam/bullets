@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { ShotCard } from './ShotCard';
 import { HuddleStrip } from './HuddleStrip';
 import { UpdateBanner } from './UpdateBanner';
+import { SyncPip } from './SyncPip';
 import { Empty, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { settle } from '../design/springs';
@@ -87,6 +88,8 @@ export function TodayView({
         </p>
         <h1 className="display mt-1 text-5xl text-[var(--ink)]">Today</h1>
       </header>
+
+      <SyncPip />
 
       {incoming.length > 0 && (
         <IncomingBanner items={incoming} onZoom={onZoom} />

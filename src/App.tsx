@@ -19,7 +19,7 @@ import { startSync } from './sync/client';
 import { useHuddles } from './data/store';
 import { getActor } from './data/mutations';
 import { seedIfEmpty } from './data/seed';
-import { hasAnswered, type Person } from './data/types';
+import { HORIZON_META, hasAnswered, type Person } from './data/types';
 
 type Overlay =
   | { kind: 'none' }
@@ -39,6 +39,7 @@ export function App() {
   const [capturing, setCapturing] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastAction, setToastAction] = useState<'shelf' | null>(null);
 
   const huddles = useHuddles();
   const me = getActor();
@@ -195,7 +196,18 @@ export function App() {
         huddleBadge={pendingHuddles}
       />
 
-      <CaptureSheet open={capturing} onClose={() => setCapturing(false)} />
+      <CaptureSheet
+        open={capturing}
+        onClose={() => setCapturing(false)}
+        onSaved={({ horizon }) => {
+          setToast(
+            horizon === 'shelf'
+              ? 'Saved to the Shelf'
+              : `Saved to ${HORIZON_META[horizon].label}`,
+          );
+          setToastAction(horizon === 'shelf' ? 'shelf' : null);
+        }}
+      />
 
       <RequestHuddleSheet
         open={requesting}
@@ -224,7 +236,15 @@ export function App() {
         )}
       </AnimatePresence>
 
-      <Toast message={toast} actionLabel="OK" onAction={() => setToast(null)} />
+      <Toast
+        message={toast}
+        actionLabel={toastAction === 'shelf' ? 'Show' : 'OK'}
+        onAction={() => {
+          if (toastAction === 'shelf') setTab('shelf');
+          setToast(null);
+          setToastAction(null);
+        }}
+      />
     </div>
   );
 }

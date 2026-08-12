@@ -1,47 +1,65 @@
 import { db } from '../data/db';
-import { applyLocal } from '../data/mutations';
+import { applyLocal, onChange } from '../data/mutations';
 import { ack, pending } from '../data/outbox';
-import { getToken } from './auth';
+import { clearToken, ensureToken, getPerson } from './auth';
+import { apiUrl } from './api';
 import type { Op } from '../data/ops';
 
 /**
  * Adaptive polling.
  *
- * Netlify Functions can't hold WebSockets and their streaming responses cap at
- * 60 seconds, so SSE would mean constant reconnect churn. For two users,
- * polling at the right cadence is simpler and indistinguishable from realtime.
+ * Netlify Functions can't hold WebSockets and cap streaming responses at 60
+ * seconds, so SSE would mean constant reconnect churn. For two users, polling
+ * at the right cadence is simpler and indistinguishable from realtime.
  *
- * Crucially, your OWN edits never wait on any of this — they apply to local
- * state instantly. The pace only governs how fast you see the other person's
- * changes, and 1.5s on a shared board reads as live.
+ * Your OWN edits never wait on any of this — they apply to local state
+ * instantly. The pace only governs how fast you see the other person's changes.
  */
 export type Pace = 'live' | 'idle';
 
 const INTERVAL: Record<Pace, number> = {
   live: 1_500,
-  idle: 15_000,
+  // Two people watching each other work: "a few seconds" is the product
+  // requirement, so this is not a background chore interval.
+  idle: 4_000,
+};
+
+/** Matches MAX_OPS_PER_PULL in netlify/functions/sync.mts. */
+const PAGE_SIZE = 2000;
+
+export type SyncState = {
+  /** 'syncing' only shows after a beat, so a healthy sync never flickers. */
+  status: 'ok' | 'syncing' | 'offline' | 'error';
+  lastOkAt: number | null;
+  queued: number;
+  error: string | null;
 };
 
 let pace: Pace = 'idle';
 let context: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
+let nudge: ReturnType<typeof setTimeout> | null = null;
 let inFlight = false;
 let present: string[] = [];
-let online = true;
+let started = false;
 
-type StatusListener = (s: { online: boolean; queued: number }) => void;
-const statusListeners = new Set<StatusListener>();
+let state: SyncState = { status: 'ok', lastOkAt: null, queued: 0, error: null };
 
-export const onStatus = (fn: StatusListener): (() => void) => {
-  statusListeners.add(fn);
+const listeners = new Set<(s: SyncState) => void>();
+
+export const syncState = (): SyncState => state;
+
+export function onSyncState(fn: (s: SyncState) => void): () => void {
+  listeners.add(fn);
+  fn(state);
   return () => {
-    statusListeners.delete(fn);
+    listeners.delete(fn);
   };
-};
+}
 
-async function emitStatus() {
-  const queued = await db.outbox.count();
-  statusListeners.forEach(fn => fn({ online, queued }));
+async function setState(patch: Partial<SyncState>) {
+  state = { ...state, ...patch, queued: await db.outbox.count() };
+  listeners.forEach(fn => fn(state));
 }
 
 export const currentInterval = (): number => INTERVAL[pace];
@@ -59,41 +77,47 @@ async function cursor(): Promise<number> {
   return ((await db.meta.get('cursor'))?.value as number | undefined) ?? 0;
 }
 
-/** Matches MAX_OPS_PER_PULL in netlify/functions/sync.mts. */
-const PAGE_SIZE = 2000;
-
 export async function syncOnce(): Promise<void> {
-  const token = getToken();
-  if (!token || inFlight) return;
-  inFlight = true;
+  if (inFlight) return;
 
+  // A device that signed in offline has an identity but no token. Retrying here
+  // rather than giving up is what stops sync from silently never running.
+  const token = await ensureToken();
+  if (!token) {
+    if (getPerson()) await setState({ status: 'offline', error: 'No token yet' });
+    return;
+  }
+
+  inFlight = true;
   try {
     const outgoing = await pending();
     let sentOutbox = false;
     let pages = 0;
 
-    // The server caps a pull at PAGE_SIZE. A single request would leave the
-    // rest of the backlog stranded until the next tick, and on a first sync
-    // against an established log that stalls indefinitely at one page per
-    // poll. Keep going while pages come back full.
     for (;;) {
-      const res = await fetch('/api/sync', {
+      const res = await fetch(apiUrl('/api/sync'), {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({
           since: await cursor(),
-          // Only push the outbox on the first request of the loop.
           ops: sentOutbox ? [] : outgoing,
           context,
         }),
       });
+
+      // A rotated BULLETS_SECRET invalidates tokens. Re-mint once rather than
+      // wedging forever.
+      if (res.status === 401) {
+        clearToken();
+        await setState({ status: 'error', error: 'Signed out, retrying' });
+        return;
+      }
       if (!res.ok) throw new Error(`sync failed: ${res.status}`);
 
       const body = (await res.json()) as { seq: number; ops: Op[]; presence?: string[] };
 
       if (!sentOutbox) {
         sentOutbox = true;
-        // Ack by explicit id so anything enqueued mid-flight survives.
         if (outgoing.length) await ack(outgoing.map(o => o.opId));
       }
 
@@ -101,23 +125,20 @@ export async function syncOnce(): Promise<void> {
       await db.meta.put({ key: 'cursor', value: body.seq });
       present = body.presence ?? [];
 
-      // The server re-delivers a 30s overlap window to cover the bigserial
-      // commit gap, so a short page is the real end-of-backlog signal.
       if (!body.ops || body.ops.length < PAGE_SIZE) break;
-      if (++pages > 50) break; // pathological backlog; next tick continues
+      if (++pages > 50) break;
     }
 
-    online = true;
-
-    // Keep the home screen widget and the scheduled huddle reminders current.
-    // Both are no-ops on web.
+    await setState({ status: 'ok', lastOkAt: Date.now(), error: null });
     void afterSync();
   } catch (err) {
-    online = false;
+    await setState({
+      status: navigator.onLine === false ? 'offline' : 'error',
+      error: err instanceof Error ? err.message : 'Sync failed',
+    });
     throw err;
   } finally {
     inFlight = false;
-    void emitStatus();
   }
 }
 
@@ -145,19 +166,36 @@ async function afterSync(): Promise<void> {
 function schedule() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(async () => {
-    // Offline is a normal state, not an error. The outbox holds and drains later.
     try {
       await syncOnce();
     } catch {
-      /* keep polling */
+      /* offline is a normal state; the outbox holds */
     }
     schedule();
   }, currentInterval());
 }
 
+/**
+ * Push straight after a local write.
+ *
+ * Waiting up to a full poll interval to send something the user just typed is
+ * the difference between "instant" and "eventually". Debounced so a burst of
+ * edits is one request.
+ */
+function pushSoon() {
+  if (nudge) clearTimeout(nudge);
+  nudge = setTimeout(() => {
+    void syncOnce().catch(() => {});
+  }, 250);
+}
+
 export function startSync(): void {
+  if (started) return;
+  started = true;
+
   void syncOnce().catch(() => {});
   schedule();
+  onChange(pushSoon);
 
   const wake = () => void syncOnce().catch(() => {});
   addEventListener('focus', wake);
@@ -169,5 +207,7 @@ export function startSync(): void {
 
 export function stopSync(): void {
   if (timer) clearTimeout(timer);
+  if (nudge) clearTimeout(nudge);
   timer = null;
+  started = false;
 }

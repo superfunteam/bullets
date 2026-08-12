@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Config } from '@netlify/functions';
 import { requirePerson } from '../lib/auth.mts';
+import { isPreflight, json, preflight, text } from '../lib/http.mts';
 
 /**
  * Paste or dictate a mess, get back structured bullets.
@@ -33,17 +34,18 @@ Reply with JSON only, no prose and no code fence:
 {"bullets":[{"title":"...","clientName":"...","horizon":"...","deadline":"YYYY-MM-DD","count":{"total":0,"unit":"..."}}]}`;
 
 export default async (req: Request) => {
-  if (!(await requirePerson(req))) return new Response('Unauthorized', { status: 401 });
+  if (isPreflight(req)) return preflight();
+  if (!(await requirePerson(req))) return text('Unauthorized', 401);
 
   let body: { text?: string; clients?: string[]; today?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response('Bad request', { status: 400 });
+    return text('Bad request', 400);
   }
 
-  const text = (body.text ?? '').slice(0, 8000).trim();
-  if (!text) return Response.json({ bullets: [] });
+  const dump = (body.text ?? '').slice(0, 8000).trim();
+  if (!dump) return json({ bullets: [] });
 
   try {
     const message = await anthropic.messages.create({
@@ -52,22 +54,22 @@ export default async (req: Request) => {
       system: `${SYSTEM}\n\nToday is ${body.today ?? 'unknown'}.\nKnown clients: ${
         body.clients?.join(', ') || 'none yet'
       }.`,
-      messages: [{ role: 'user', content: text }],
+      messages: [{ role: 'user', content: dump }],
     });
 
     const raw = message.content[0]?.type === 'text' ? message.content[0].text : '';
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     const parsed = JSON.parse(cleaned) as { bullets?: unknown[] };
 
-    return Response.json({ bullets: Array.isArray(parsed.bullets) ? parsed.bullets : [] });
+    return json({ bullets: Array.isArray(parsed.bullets) ? parsed.bullets : [] });
   } catch {
     // The app is fully functional with AI off; never surface a failure here.
-    return Response.json({ bullets: [] });
+    return json({ bullets: [] });
   }
 };
 
 export const config: Config = {
   path: '/api/ai/braindump',
-  method: 'POST',
+  method: ['POST', 'OPTIONS'],
   rateLimit: { windowSize: 60, windowLimit: 10 },
 };

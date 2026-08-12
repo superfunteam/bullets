@@ -13,7 +13,15 @@ import { HORIZONS, type Horizon } from '../data/types';
  * That is the entire vocabulary of a bullet, and it should stay that way —
  * every field we resist here is a field neither of us has to maintain later.
  */
-export function CaptureSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CaptureSheet({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved?: (info: { title: string; horizon: Horizon }) => void;
+}) {
   const clients = useClients();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,6 +54,9 @@ export function CaptureSheet({ open, onClose }: { open: boolean; onClose: () => 
       deadline,
       count: total && total > 1 ? { total, unit: unit.trim() || 'parts' } : undefined,
     });
+    // A bullet captured with the default horizon lands on the Shelf, which is
+    // collapsed by client — easy to save something and never see it again.
+    onSaved?.({ title: t, horizon });
     onClose();
   };
 
