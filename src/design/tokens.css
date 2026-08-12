@@ -1,0 +1,245 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------- fonts
+   Self-hosted, because the APK has no network guarantee and a fallback
+   font would wreck the whole feel on first launch offline. */
+
+@font-face {
+  font-family: 'Bricolage';
+  src: url('/fonts/bricolage-latin.woff2') format('woff2-variations');
+  font-weight: 200 800;
+  font-stretch: 75% 100%;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Instrument';
+  src: url('/fonts/instrument-serif-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Instrument';
+  src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --------------------------------------------------------------- tokens
+   Direction: precision instrument. Warm machined neutrals, tactile slabs.
+   Client hues are the only saturation in the interface. Alarm color is
+   reserved so strictly that when it appears it actually means something. */
+
+:root {
+  color-scheme: light dark;
+
+  --font-ui: 'Bricolage', ui-sans-serif, system-ui, sans-serif;
+  --font-editorial: 'Instrument', ui-serif, Georgia, serif;
+
+  /* Canvas — warm, never a neutral grey */
+  --bg: oklch(97.2% 0.007 85);
+  --surface: oklch(99.4% 0.004 85);
+  --surface-2: oklch(94.4% 0.009 84);
+  --surface-3: oklch(90.5% 0.012 82);
+  --line: oklch(88% 0.010 84);
+  --line-strong: oklch(80% 0.014 84);
+
+  /* Ink */
+  --ink: oklch(21% 0.014 66);
+  --ink-2: oklch(46% 0.013 70);
+  --ink-3: oklch(64% 0.011 74);
+
+  /* Semantic. Almost exclusively target tension. */
+  --incoming: oklch(66% 0.155 58);
+  --incoming-soft: oklch(93% 0.055 70);
+  --wide: oklch(53% 0.165 27);
+  --wide-soft: oklch(92% 0.045 30);
+  --hit: oklch(58% 0.125 155);
+  --hit-soft: oklch(93% 0.05 158);
+
+  /* Form */
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --r-xl: 34px;
+  --tap: 56px;
+
+  /* Layered, soft — machined rather than floating */
+  --shadow-1:
+    0 1px 1px oklch(30% 0.02 70 / 0.04),
+    0 2px 6px oklch(30% 0.02 70 / 0.05);
+  --shadow-2:
+    0 1px 2px oklch(30% 0.02 70 / 0.06),
+    0 6px 14px oklch(30% 0.02 70 / 0.07),
+    0 18px 36px oklch(30% 0.02 70 / 0.06);
+  --shadow-3:
+    0 2px 4px oklch(30% 0.02 70 / 0.08),
+    0 14px 30px oklch(30% 0.02 70 / 0.12),
+    0 36px 70px oklch(30% 0.02 70 / 0.12);
+
+  --grain-opacity: 0.035;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: oklch(15.5% 0.009 68);
+    --surface: oklch(20.5% 0.011 68);
+    --surface-2: oklch(25.5% 0.013 68);
+    --surface-3: oklch(31% 0.014 68);
+    --line: oklch(29% 0.013 68);
+    --line-strong: oklch(38% 0.015 68);
+
+    --ink: oklch(96% 0.008 85);
+    --ink-2: oklch(73% 0.012 82);
+    --ink-3: oklch(55% 0.013 78);
+
+    --incoming: oklch(79% 0.145 62);
+    --incoming-soft: oklch(32% 0.07 55);
+    --wide: oklch(70% 0.155 28);
+    --wide-soft: oklch(30% 0.075 28);
+    --hit: oklch(76% 0.135 158);
+    --hit-soft: oklch(28% 0.06 158);
+
+    --shadow-1: 0 1px 1px oklch(0% 0 0 / 0.3), 0 2px 6px oklch(0% 0 0 / 0.25);
+    --shadow-2:
+      0 1px 2px oklch(0% 0 0 / 0.35),
+      0 6px 14px oklch(0% 0 0 / 0.3),
+      0 18px 36px oklch(0% 0 0 / 0.3);
+    --shadow-3:
+      0 2px 4px oklch(0% 0 0 / 0.4),
+      0 14px 30px oklch(0% 0 0 / 0.45),
+      0 36px 70px oklch(0% 0 0 / 0.45);
+
+    --grain-opacity: 0.055;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: oklch(15.5% 0.009 68);
+  --surface: oklch(20.5% 0.011 68);
+  --surface-2: oklch(25.5% 0.013 68);
+  --surface-3: oklch(31% 0.014 68);
+  --line: oklch(29% 0.013 68);
+  --line-strong: oklch(38% 0.015 68);
+  --ink: oklch(96% 0.008 85);
+  --ink-2: oklch(73% 0.012 82);
+  --ink-3: oklch(55% 0.013 78);
+  --incoming: oklch(79% 0.145 62);
+  --incoming-soft: oklch(32% 0.07 55);
+  --wide: oklch(70% 0.155 28);
+  --wide-soft: oklch(30% 0.075 28);
+  --hit: oklch(76% 0.135 158);
+  --hit-soft: oklch(28% 0.06 158);
+  --shadow-1: 0 1px 1px oklch(0% 0 0 / 0.3), 0 2px 6px oklch(0% 0 0 / 0.25);
+  --shadow-2:
+    0 1px 2px oklch(0% 0 0 / 0.35),
+    0 6px 14px oklch(0% 0 0 / 0.3),
+    0 18px 36px oklch(0% 0 0 / 0.3);
+  --shadow-3:
+    0 2px 4px oklch(0% 0 0 / 0.4),
+    0 14px 30px oklch(0% 0 0 / 0.45),
+    0 36px 70px oklch(0% 0 0 / 0.45);
+  --grain-opacity: 0.055;
+}
+
+/* ------------------------------------------------------------- elements */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-variation-settings: 'wght' 450;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  /* Capacitor injects these; env() is the browser path. */
+  --inset-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+/* Fine grain over the whole canvas. Barely visible, but it is the difference
+   between "a web page" and "a made object". */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* ------------------------------------------------------------ utilities */
+
+.editorial {
+  font-family: var(--font-editorial);
+  font-style: italic;
+  letter-spacing: -0.01em;
+}
+
+/* Display type: tightened tracking and a condensed axis so long client work
+   titles stay on two lines instead of three. */
+.display {
+  font-variation-settings: 'wght' 700, 'wdth' 92;
+  letter-spacing: -0.03em;
+  line-height: 1.03;
+}
+
+.meta {
+  font-variation-settings: 'wght' 560;
+  letter-spacing: 0.02em;
+  font-size: 0.8125rem;
+}
+
+.numeral {
+  font-variant-numeric: tabular-nums;
+  font-variation-settings: 'wght' 700;
+  letter-spacing: -0.04em;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

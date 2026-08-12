@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bullets">
+  <rect width="512" height="512" rx="112" fill="#1c1917"/>
+  <!-- A target: three rings and a mark that has already landed off-centre,
+       which is the honest version of how a week actually goes. -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#f5f0e8" stroke-width="26" opacity="0.28"/>
+  <circle cx="256" cy="256" r="96" fill="none" stroke="#f5f0e8" stroke-width="26" opacity="0.55"/>
+  <circle cx="256" cy="256" r="44" fill="#e8722c"/>
+</svg>
