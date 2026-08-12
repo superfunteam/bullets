@@ -16,10 +16,17 @@ export type Op = {
   actor: Person;
 };
 
-/** An entity plus the per-field clocks that make last-write-wins work. */
+/**
+ * An entity plus the per-field bookkeeping that makes last-write-wins work.
+ *
+ * `_by` is not needed for convergence — it is kept so the app can say who
+ * finished something and when, without re-reading the server's op log. In a
+ * two-person space that attribution is most of what history is for.
+ */
 export type Materialized = AnyEntity & {
   _ts: Record<string, number>;
   _op: Record<string, string>;
+  _by: Record<string, Person>;
 };
 
 /**
@@ -38,6 +45,7 @@ export function applyOp(rec: Materialized | undefined, op: Op): Materialized {
       updatedAt: op.ts,
       _ts: {},
       _op: {},
+      _by: {},
     } as Materialized);
 
   // The timestamp envelope folds over every op we see, including ones whose
@@ -63,11 +71,27 @@ export function applyOp(rec: Materialized | undefined, op: Op): Materialized {
     [op.field]: op.value,
     _ts: { ...base._ts, [op.field]: op.ts },
     _op: { ...base._op, [op.field]: op.opId },
+    _by: { ...base._by, [op.field]: op.actor },
   } as Materialized;
 }
 
 /** Strip sync bookkeeping before handing an entity to the UI. */
 export function clean<T extends AnyEntity>(rec: Materialized): T {
-  const { _ts: _ignoredTs, _op: _ignoredOp, ...rest } = rec;
+  const { _ts: _ignoredTs, _op: _ignoredOp, _by: _ignoredBy, ...rest } = rec;
   return rest as unknown as T;
+}
+
+/**
+ * When a specific field was last written, and by whom if we know.
+ *
+ * `by` is optional because every record written before attribution existed has
+ * a timestamp and no actor. Requiring both would throw away a date we do have
+ * and blank the history of everything already in the space.
+ */
+export type FieldStamp = { at: number; by?: Person };
+
+export function stampOf(rec: Materialized | undefined, field: string): FieldStamp | undefined {
+  const at = rec?._ts?.[field];
+  if (at === undefined) return undefined;
+  return { at, by: rec?._by?.[field] };
 }

@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
-import { clean, type Materialized } from './ops';
+import { clean, stampOf, type FieldStamp, type Materialized } from './ops';
 import { weekStart } from '../lib/dates';
 import type { Bullet, Client, Huddle, HuddleItem, Shot } from './types';
 
@@ -194,4 +194,67 @@ export function useHuddlesOn(date: string): Huddle[] {
     ).padStart(2, '0')}`;
     return iso === date;
   });
+}
+
+// --------------------------------------------------------------- completed
+
+export type CompletedRow = {
+  bullet: Bullet;
+  client?: Client;
+  /** When it was finished and by whom, from the op that set state. */
+  finished?: FieldStamp;
+  /** Every day work actually landed on, newest first. The real log. */
+  log: { date: string; amount?: number }[];
+  /** Pieces, for a parent. */
+  children: Bullet[];
+};
+
+/**
+ * Finished work, newest first.
+ *
+ * Kept because "done" should not mean "gone". The days it was worked come from
+ * its completed shots — a record of what actually happened rather than a
+ * separate audit trail — and the attribution comes from the op that set
+ * `state`, which the materialised record already carries.
+ */
+export function useCompleted(limit = 60): CompletedRow[] {
+  return (
+    useLiveQuery(async () => {
+      const raw = (await db.bullets.toArray()).filter(
+        b => !b.deletedAt && (b as unknown as Bullet).state === 'done',
+      );
+
+      const rows: CompletedRow[] = [];
+      for (const rec of raw) {
+        const bullet = clean<Bullet>(rec);
+        // Pieces are shown inside their parent, not as separate entries.
+        if (bullet.parentId) continue;
+
+        const shots = alive(await db.shots.where('bulletId').equals(bullet.id).toArray())
+          .map(s => clean<Shot>(s))
+          .filter(s => s.state === 'done')
+          .sort((a, b) => (a.date > b.date ? -1 : 1));
+
+        const kids = alive(await db.bullets.where('parentId').equals(bullet.id).toArray()).map(k =>
+          clean<Bullet>(k),
+        );
+
+        const client = bullet.clientId
+          ? ((await db.clients.get(bullet.clientId)) as Materialized | undefined)
+          : undefined;
+
+        rows.push({
+          bullet,
+          client: client && !client.deletedAt ? clean<Client>(client) : undefined,
+          finished: stampOf(rec, 'state'),
+          log: shots.map(s => ({ date: s.date, amount: s.amount })),
+          children: kids,
+        });
+      }
+
+      return rows
+        .sort((a, b) => (b.finished?.at ?? b.bullet.updatedAt) - (a.finished?.at ?? a.bullet.updatedAt))
+        .slice(0, limit);
+    }, [limit], []) ?? []
+  );
 }

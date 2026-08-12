@@ -7,6 +7,7 @@ import { byUrgency, tensionOf } from '../data/selectors';
 import { useAllShots, useClients, useShelf } from '../data/store';
 import { shortDate, today as todayFn } from '../lib/dates';
 import type { Bullet, Shot } from '../data/types';
+import { CompletedSection } from './CompletedSection';
 
 /**
  * Everything we have not decided on yet, filed by client and shut by default.
@@ -164,6 +165,7 @@ export function ShelfView({
           </div>
         </>
       )}
+      <CompletedSection onZoom={onZoom} />
     </div>
   );
 }
