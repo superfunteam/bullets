@@ -91,7 +91,6 @@ export function RequestHuddleSheet({
       { key: 'monday', label: 'Monday', at: atTime(nextMonday(t), 10) },
     ];
     return all.filter(p => p.at > now);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -324,7 +323,7 @@ export function RequestHuddleSheet({
 
         <div>
           <BigButton onClick={save} disabled={!startsAt || saving}>
-            {startsAt ? `Put it on both calendars` : 'Pick a time'}
+            {startsAt ? 'Put it on both calendars' : 'Pick a time'}
           </BigButton>
           <p className="meta mt-3 text-center text-[var(--ink-3)]">
             {startsAt

@@ -481,7 +481,10 @@ function Lane({
           {rows.map(row => (
             <motion.div
               key={row.item.id}
-              layout
+              // Position-only: the decision editor and the decision text both
+              // change an item's height, and animating size would scale the
+              // text inside it. Lane travel is a position change anyway.
+              layout="position"
               layoutId={`hi-${row.item.id}`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
