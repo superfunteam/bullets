@@ -1,3 +1,36 @@
-# Internal tool for two people. Not for indexing.
+# Internal tool for two people — keep it out of search results.
+# The noindex meta tag does that job on its own, so search engines are told
+# not to index rather than not to look.
 User-agent: *
 Disallow: /
+
+# Link-preview bots are the exception, and they have to be named.
+# They obey robots.txt, so a blanket Disallow means a link pasted in Slack or
+# a DM unfurls as a bare URL — which defeats the point of having an unfurl
+# image at all. These only fetch what they are handed; they do not index.
+User-agent: Slackbot-LinkExpanding
+Allow: /
+
+User-agent: Slackbot
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Discordbot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+User-agent: Applebot
+Allow: /
