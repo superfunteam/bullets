@@ -1,7 +1,9 @@
 # Bullets — working notes for agents
 
 > **Bullets** — *No more dodging.* A two-person, deadline-first bullet journal
-> for Clark and Angie at Superfun. Web on Netlify, plus a sideloaded Android APK.
+> for Clark and Angie at Superfun. **Three targets from one React app**: web on
+> Netlify, a sideloaded Android APK (Capacitor), and a macOS menu-bar app
+> (Electron).
 
 Read this before changing anything. It is written for the next agent, and it is
 mostly a list of things that have already gone wrong here.
@@ -16,7 +18,9 @@ src/data/       the local-first core: types, op log, Dexie, mutations, selectors
 src/sync/       api base, auth, the adaptive polling loop
 src/design/     tokens, spring presets, chunky primitives, text-scale detection
 src/views/      one file per screen
-src/native/     Capacitor-only: widget payload, local notifications, self-update
+src/native/     platform code: widget payload, notifications, self-update.
+                Branches on Capacitor.isNativePlatform() vs window.bulletsDesktop.
+electron/       macOS main process, preload bridge, tray
 netlify/functions/  sync, auth, snapshot, scheduled compaction, AI assist
 netlify/lib/        shared helpers (auth signing, CORS) — NOT deployed as functions
 ```
@@ -76,17 +80,28 @@ per-frame drops off the compositor.
 while looking perfectly healthy, because every failure was caught and
 discarded. If something can break, it must be able to say so — see `SyncPip`.
 
-**4. Verify on the platform the code actually runs on.** The sync bug below
-passed every web test. Web and APK are different environments.
+**4. Verify on the platform the code actually runs on.** There are now
+**three**, and they differ in ways that pass every test: the web runs at a real
+https origin, the APK at `https://localhost`, and the macOS app at `file://`.
+The sync bug below passed everything on the web and meant the APK never synced
+once. A green suite says nothing about the other two.
 
 ---
 
 ## Traps that have already bitten, in order of nastiness
 
-**Relative API URLs break the APK.** Capacitor serves from `https://localhost`,
-so `fetch('/api/sync')` hits an origin with no server. Always go through
-`sync/api.ts`. Any new function also needs CORS + an `OPTIONS` preflight from
-`netlify/lib/http.mts`, or the device's request is never even sent.
+**Relative API URLs break everything that isn't the web.** Capacitor serves from
+`https://localhost` and packaged Electron from `file://` (which sends
+`Origin: null`), so `fetch('/api/sync')` hits an origin with no server. Always
+go through `sync/api.ts`, which knows about all three. Any new function also
+needs CORS + an `OPTIONS` preflight from `netlify/lib/http.mts`, or the
+request is never even sent.
+
+**Desktop reminders live in memory.** The macOS app arms `setTimeout`s in the
+main process, so they survive closing the window but not quitting the app —
+unlike Android's AlarmManager, which survives both kill and reboot. Don't
+promise parity in copy. (Node also cannot take a delay over ~24.8 days, so
+long-range huddles re-arm; see `arm()` in `electron/main.mjs`.)
 
 **Horizon alone does not put a bullet on the calendar.** Every calendar view
 renders *shots*, and `useShelf` only lists `shelf`/`later` — so a bullet with
@@ -178,7 +193,12 @@ but *do* check the browser, and check both themes and both text scales.
 
 ## Where the reasoning lives
 
+- `docs/state-model.md` — **read this before touching completion, horizons or
+  shots.** The three shapes, the two invariants, and what every action does.
+  `invariants.test.ts` is that document executed.
 - `docs/architecture.md` — how the sync layer works and how to extend it
+- `docs/macos-signing.md` — the five secrets the macOS release job needs; it
+  skips cleanly without them
 - `docs/superpowers/specs/2026-08-12-bullets-design.md` — the original design,
   including a section marked as revised when research contradicted it
 - `docs/android-signing.md`, `docs/firebase-setup.md` — the native setup
