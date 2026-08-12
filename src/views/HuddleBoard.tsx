@@ -339,7 +339,13 @@ function ResponseBar({
 
   return (
     <section className="mb-9">
-      <div className="grid grid-cols-3 items-stretch gap-2.5">
+      {/* Three across is right at normal text. At large system font sizes the
+          columns collapse to ~90px and the labels wrap one word per line into
+          221px-tall slivers — technically not overflow, but unusable. Stack. */}
+      <div
+        className="grid grid-cols-3 items-stretch gap-2.5
+                   [html[data-text-scale='huge']_&]:grid-cols-1"
+      >
         <Answer
           label="In"
           sub="Already assumed"
@@ -459,7 +465,10 @@ function Answer({
         interactive
         className={`h-full ${active ? 'ring-2 ring-[var(--ink)]' : ''}`}
       >
-        <div className="flex h-full min-h-[86px] flex-col justify-between px-4 py-4">
+        <div
+          className="flex h-full min-h-[86px] flex-col justify-between px-4 py-4
+                     [html[data-text-scale='huge']_&]:min-h-0"
+        >
           <p className="display text-xl text-[var(--ink)]">{label}</p>
           <p className="meta mt-2 leading-tight text-[var(--ink-3)]">{sub}</p>
         </div>

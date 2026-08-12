@@ -18,16 +18,19 @@ export function HuddleStrip({ huddle, onOpen }: { huddle: Huddle; onOpen: () => 
       tone={live ? 'raised' : 'default'}
       className={live ? 'ring-2 ring-[var(--hit)]' : ''}
     >
-      <div className="flex items-center gap-4 px-6 py-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-5">
         <div className="shrink-0 text-center">
           <div className="numeral text-2xl text-[var(--ink)]">{timeOfDay(huddle.startsAt)}</div>
           <div className="meta mt-0.5 text-[var(--ink-3)]">{huddle.durationMin}m</div>
         </div>
 
-        <div className="h-10 w-px bg-[var(--line)]" aria-hidden />
+        <div
+          className="h-10 w-px bg-[var(--line)] [html[data-text-scale='huge']_&]:hidden"
+          aria-hidden
+        />
 
-        <div className="min-w-0 flex-1">
-          <p className="display truncate text-xl text-[var(--ink)]">
+        <div className="min-w-[8rem] flex-1">
+          <p className="display text-xl text-[var(--ink)]">
             {huddle.title ?? 'Huddle'}
           </p>
           <p className="meta mt-1 text-[var(--ink-3)]">

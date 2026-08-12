@@ -69,11 +69,15 @@ export function TabBar({
               key={t.id}
               type="button"
               onClick={() => onTab(t.id)}
+              aria-label={t.label}
               whileTap={{ scale: 0.92 }}
               transition={snap}
               aria-current={active ? 'page' : undefined}
-              className="relative flex min-h-[var(--tap)] flex-1 flex-col items-center
-                         justify-center gap-1 rounded-[var(--r-md)] py-1"
+              /* min-w-0 is load-bearing: flex-1 refuses to shrink below its
+                 text content, so at large system font sizes the labels pushed
+                 the capture button clean off the right edge of the screen. */
+              className="relative flex min-h-[var(--tap)] min-w-0 flex-1 flex-col
+                         items-center justify-center gap-1 rounded-[var(--r-md)] py-1"
             >
               {active && (
                 <motion.span
@@ -106,8 +110,12 @@ export function TabBar({
                   />
                 ) : null}
               </span>
+              {/* At huge text the labels stop fitting. The icons carry the
+                  meaning, so drop the labels rather than shrink the targets —
+                  aria-label keeps them named for screen readers either way. */}
               <span
-                className="meta relative text-[0.6875rem]"
+                className="meta relative max-w-full truncate text-[0.6875rem]
+                           [html[data-text-scale='huge']_&]:hidden"
                 style={{ color: active ? 'var(--ink)' : 'var(--ink-3)' }}
               >
                 {t.label}

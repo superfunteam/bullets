@@ -120,7 +120,9 @@ export function CaptureSheet({ open, onClose }: { open: boolean; onClose: () => 
         </Field>
 
         <Field label="How many">
-          <div className="flex items-center gap-3">
+          {/* Wraps like every other field row. Without this the count pills run
+              off the right edge at large system font sizes. */}
+          <div className="flex flex-wrap items-center gap-2">
             <Pill active={!total} onClick={() => setTotal(undefined)}>
               Just one
             </Pill>
@@ -134,8 +136,9 @@ export function CaptureSheet({ open, onClose }: { open: boolean; onClose: () => 
                 value={unit}
                 onChange={e => setUnit(e.target.value)}
                 placeholder="posts"
-                className="meta min-w-0 flex-1 rounded-[var(--r-sm)] bg-[var(--surface-2)]
-                           px-3 py-2.5 text-[var(--ink)] placeholder:text-[var(--ink-3)]"
+                className="meta min-h-11 w-full min-w-[6rem] flex-1 rounded-[var(--r-sm)]
+                           bg-[var(--surface-2)] px-3 py-2.5 text-[var(--ink)]
+                           placeholder:text-[var(--ink-3)]"
               />
             )}
           </div>
