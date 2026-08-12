@@ -1,0 +1,117 @@
+name: Android Release
+
+# Tag a version to cut a release:  git tag v1.0.0 && git push --tags
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# action-gh-release writes through the Releases API and the default token is
+# read-only on modern repos. Naming any scope sets every unnamed scope to none.
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # ubuntu-latest already ships Android SDK 36 and sets ANDROID_HOME, so the
+    # setup-android step most guides include is unnecessary.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22 # Capacitor 8 requires Node 22+
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          # capacitor.build.gradle hardcodes VERSION_21 and is regenerated on
+          # every cap sync, so editing it is futile. JDK 17 fails outright.
+          java-version: '21'
+          # Deliberately no `cache: gradle` here — it interferes with setup-gradle.
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+
+      - name: Decode release keystore
+        id: keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret. Building a debug-signed APK instead. See docs/android-signing.md"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore" || { echo "::error::Keystore decoded to an empty file"; exit 1; }
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - run: chmod +x ./android/gradlew
+
+      - name: Build signed release APK
+        if: steps.keystore.outputs.present == 'true'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Build debug APK
+        if: steps.keystore.outputs.present == 'false'
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
+
+      # assembleRelease with a broken signing config SUCCEEDS and emits an
+      # uninstallable app-release-unsigned.apk. Without this check a typo'd
+      # secret name ships a green build full of garbage.
+      - name: Verify the APK is actually signed
+        if: steps.keystore.outputs.present == 'true'
+        run: |
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs \
+            android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Stage the APK
+        id: stage
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          if [ "${{ steps.keystore.outputs.present }}" = "true" ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk "out/bullets-${VERSION}.apk"
+          else
+            cp android/app/build/outputs/apk/debug/app-debug.apk "out/bullets-${VERSION}-debug.apk"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bullets-${{ steps.stage.outputs.version }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Bullets ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: out/*.apk
+
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
