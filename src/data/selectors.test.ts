@@ -56,11 +56,6 @@ describe('tensionOf', () => {
     expect(tensionOf(b, [], '2026-08-12').level).toBe('calm');
   });
 
-  it('is calm for a called-off bullet no matter how late', () => {
-    const b = bullet({ deadline: '2026-01-01', state: 'dropped' });
-    expect(tensionOf(b, [], '2026-08-12').level).toBe('calm');
-  });
-
   it('ignores an already-completed shot when deciding whether we aimed', () => {
     const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
     expect(tensionOf(b, [shot({ state: 'done' })], '2026-08-12').level).toBe('incoming');

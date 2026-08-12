@@ -1,4 +1,4 @@
-import { daysUntil } from '../lib/dates';
+import { daysUntil, weekStart } from '../lib/dates';
 import type { Bullet, Horizon, Shot } from './types';
 
 export type TensionLevel = 'calm' | 'incoming' | 'wide';
@@ -104,3 +104,60 @@ export function byUrgency(
   if (!a.bullet.deadline && b.bullet.deadline) return 1;
   return a.bullet.sortKey < b.bullet.sortKey ? -1 : 1;
 }
+
+// ---------------------------------------------------------------- surfaces
+
+/** Every place a bullet can show up. See docs/state-model.md, invariant 2. */
+export type Surface = 'today' | 'week' | 'shelf' | 'weeklyPull' | 'dailyPull';
+
+/** How far ahead a target pulls a bullet into the Weekly Pull. */
+const NEAR_TARGET_DAYS = 21;
+
+/**
+ * Where does this bullet actually appear?
+ *
+ * One function, shared by the views and by the invariant test, because the real
+ * bug behind a run of "I saved it and it's gone" reports was that each view
+ * decided this for itself and the answers didn't cover the space. If this
+ * returns [] for an open bullet, the app has lost it.
+ */
+export function surfacesFor(bullet: Bullet, shots: Shot[], today: string): Surface[] {
+  if (bullet.deletedAt || bullet.state !== 'open') return [];
+  // Children are reached by zooming into their parent, never on their own.
+  if (bullet.parentId) return [];
+
+  const live = shots.filter(s => !s.deletedAt && s.state === 'open');
+  const out: Surface[] = [];
+
+  const onToday = live.some(s => s.scope === 'day' && s.date === today);
+  if (onToday) out.push('today');
+
+  const weekOf = weekStart(today);
+  const inWeek = live.some(
+    s =>
+      (s.scope === 'week' && s.date === weekOf) ||
+      (s.scope === 'day' && weekStart(s.date) === weekOf),
+  );
+  if (inWeek) out.push('week');
+
+  if (bullet.horizon === 'shelf' || bullet.horizon === 'later') out.push('shelf');
+
+  const near =
+    bullet.deadline !== undefined && daysUntil(today, bullet.deadline) <= NEAR_TARGET_DAYS;
+  const uncommitted =
+    bullet.horizon === 'shelf' || bullet.horizon === 'later' || bullet.horizon === 'soon';
+  const roomLeft = bullet.count ? unclaimedOf(bullet, shots, 'week') > 0 : false;
+  if ((uncommitted || near) && (live.length === 0 || roomLeft)) out.push('weeklyPull');
+
+  const weekCommitment = live.some(s => s.scope === 'week' && s.date === weekOf);
+  if (weekCommitment && !onToday) out.push('dailyPull');
+
+  return out;
+}
+
+/** Invariant 2, as a predicate. An open top-level bullet must be findable. */
+export const isReachable = (bullet: Bullet, shots: Shot[], today: string): boolean =>
+  bullet.state !== 'open' ||
+  Boolean(bullet.deletedAt) ||
+  Boolean(bullet.parentId) ||
+  surfacesFor(bullet, shots, today).length > 0;

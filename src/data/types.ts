@@ -62,7 +62,10 @@ export type Bullet = Entity & {
   kind: BulletKind;
   /** Countable work, e.g. { total: 20, unit: 'posts' }. */
   count?: { total: number; unit: string };
-  state: 'open' | 'done' | 'dropped';
+  /** Two states only. 'dropped' used to mean "decided not to do this" but
+   *  behaved exactly like a delete while reading like a completion state, which
+   *  gave one field three meanings. Deleting is now deleting. */
+  state: 'open' | 'done';
   sortKey: string;
 };
 

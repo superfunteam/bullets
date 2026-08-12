@@ -32,7 +32,6 @@ async function joinShots(rows: Materialized[]): Promise<ShotRow[]> {
       const raw = bullets[i];
       if (!raw || raw.deletedAt) return null;
       const bullet = clean<Bullet>(raw);
-      if (bullet.state === 'dropped') return null;
       return {
         shot,
         bullet,

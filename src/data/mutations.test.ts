@@ -3,7 +3,6 @@ import { db, ENTITY_TABLES } from './db';
 import {
   addHuddleItem,
   callHuddle,
-  callOff,
   completeBullet,
   moveToHorizon,
   settleFromOps,
@@ -63,12 +62,12 @@ describe('bullets', () => {
     expect((await pending()).length).toBeGreaterThan(before);
   });
 
-  it('calls off a bullet rather than deleting it', async () => {
+  it('deletes a bullet with a tombstone, not a hard delete', async () => {
     const id = await createBullet({ title: 'Nope' });
-    await callOff(id);
-    const b = await bulletOf(id);
-    expect(b.state).toBe('dropped');
-    expect(b.deletedAt).toBeUndefined();
+    await deleteBullet(id);
+    // Soft delete so the tombstone syncs and the row cannot resurrect from the
+    // other device.
+    expect((await db.bullets.get(id))?.deletedAt).toBeTruthy();
   });
 });
 
