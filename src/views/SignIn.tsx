@@ -1,30 +1,25 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { BigButton } from '../design/bits';
-import { settle, snap } from '../design/springs';
+import { settle, snap, stagger } from '../design/springs';
 import { signIn } from '../sync/auth';
 import { PEOPLE, personName, type Person } from '../data/types';
 
-/** No email, no accounts. A shared phrase, then say which of the two you are. */
+/**
+ * Two faces. Tap yours.
+ *
+ * No passphrase, no email, no accounts — this is a two-person space and the
+ * only thing the app actually needs to know is which of you is holding the
+ * phone, so huddle responses and presence are attributed to the right person.
+ * That is a choice, not a gate.
+ */
 export function SignIn({ onDone }: { onDone: (p: Person) => void }) {
-  const [passphrase, setPassphrase] = useState('');
-  const [person, setPerson] = useState<Person | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Person | null>(null);
 
-  const go = async () => {
-    if (!person || !passphrase.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const ok = await signIn(passphrase.trim(), person);
-      if (ok) onDone(person);
-      else setError('That phrase did not work.');
-    } catch {
-      setError("Couldn't reach the server. Check your connection.");
-    } finally {
-      setBusy(false);
-    }
+  const go = async (person: Person) => {
+    if (busy) return;
+    setBusy(person);
+    await signIn(person);
+    onDone(person);
   };
 
   return (
@@ -41,58 +36,39 @@ export function SignIn({ onDone }: { onDone: (p: Person) => void }) {
         <h1 className="display text-6xl text-[var(--ink)]">Bullets</h1>
         <p className="editorial mt-2 text-2xl text-[var(--ink-3)]">No more dodging.</p>
 
-        <div className="mt-12">
-          <p className="meta mb-3 text-[var(--ink-3)] uppercase">Who's this?</p>
-          <div className="grid grid-cols-2 gap-3">
-            {PEOPLE.map(p => {
-              const active = person === p;
-              return (
-                <motion.button
-                  key={p}
-                  type="button"
-                  whileTap={{ scale: 0.96 }}
-                  transition={snap}
-                  onClick={() => setPerson(p)}
-                  className="rounded-[var(--r-lg)] border py-8"
-                  style={{
-                    background: active ? 'var(--ink)' : 'var(--surface)',
-                    color: active ? 'var(--bg)' : 'var(--ink)',
-                    borderColor: active ? 'var(--ink)' : 'var(--line)',
-                    boxShadow: active ? 'var(--shadow-2)' : 'var(--shadow-1)',
-                  }}
-                >
-                  <span className="display text-3xl">{personName(p)}</span>
-                </motion.button>
-              );
-            })}
-          </div>
+        <p className="meta mt-14 mb-4 text-[var(--ink-3)] uppercase">Who's holding the phone?</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          {PEOPLE.map((p, i) => {
+            const isBusy = busy === p;
+            return (
+              <motion.button
+                key={p}
+                type="button"
+                onClick={() => void go(p)}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ ...settle, delay: stagger(i, 0.06) }}
+                whileTap={{ scale: 0.96 }}
+                className="rounded-[var(--r-lg)] border py-10"
+                style={{
+                  background: isBusy ? 'var(--ink)' : 'var(--surface)',
+                  color: isBusy ? 'var(--bg)' : 'var(--ink)',
+                  borderColor: isBusy ? 'var(--ink)' : 'var(--line)',
+                  boxShadow: isBusy ? 'var(--shadow-2)' : 'var(--shadow-1)',
+                }}
+              >
+                <motion.span className="display block text-4xl" transition={snap}>
+                  {personName(p)}
+                </motion.span>
+              </motion.button>
+            );
+          })}
         </div>
 
-        <div className="mt-7">
-          <p className="meta mb-3 text-[var(--ink-3)] uppercase">Space phrase</p>
-          <input
-            type="password"
-            value={passphrase}
-            onChange={e => setPassphrase(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && void go()}
-            placeholder="••••••••"
-            className="min-h-[var(--tap)] w-full rounded-[var(--r-md)] border
-                       border-[var(--line)] bg-[var(--surface)] px-5 text-xl
-                       text-[var(--ink)] placeholder:text-[var(--ink-3)]"
-          />
-        </div>
-
-        {error && (
-          <p className="meta mt-4 text-center" style={{ color: 'var(--wide)' }}>
-            {error}
-          </p>
-        )}
-
-        <div className="mt-7">
-          <BigButton onClick={() => void go()} disabled={!person || !passphrase.trim() || busy}>
-            {busy ? 'Checking…' : 'Come in'}
-          </BigButton>
-        </div>
+        <p className="meta mt-8 text-center text-[var(--ink-3)]">
+          You can switch later. Everything is shared either way.
+        </p>
       </motion.div>
     </div>
   );

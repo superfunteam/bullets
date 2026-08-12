@@ -54,44 +54,36 @@ npm run dev
 ```
 
 That's enough to use the app on one device — it's local-first, so everything works offline
-against IndexedDB. Syncing between the two of you needs the three steps below.
+against IndexedDB.
 
-### Going live on Netlify
+### Hosting
 
-Not done yet, deliberately: it creates a public URL and claims a site name on your account,
-which is your call to make. Three steps, once.
+Already set up. The site is [bullets-superfun.netlify.app](https://bullets-superfun.netlify.app),
+the Postgres database is provisioned, and `BULLETS_SECRET` is set. Nothing needs configuring
+for AI either — the Netlify AI Gateway injects `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL`
+into the functions automatically and bills through Netlify credits.
 
-**1. Create and link the site.** Either connect the GitHub repo from the Netlify dashboard
-(recommended — you get automatic deploys on every push to `main`), or from here:
+To point a nicer domain at it (say `bullets.superfun.team`), add it under Domain management
+in the Netlify dashboard.
 
-```bash
-netlify init
-```
+### There is no password
 
-Build command `npm run build`, publish directory `dist` — Netlify auto-detects both.
+Deliberate, and worth being clear-eyed about.
 
-**2. Provision the database.** Note this is `netlify database`, not the retired `netlify db`
-beta:
+Opening the app asks which of you is holding the phone — Clark or Angie — and that's it. That
+choice is *identity*, not a gate: it's how huddle responses, presence, and history get
+attributed to the right person. The token it mints is signed so it can't be edited, which is
+what keeps attribution honest, but `/api/auth` will hand one to anyone who asks.
 
-```bash
-netlify database init
-```
+**So the space is open.** Anyone who finds the URL can read every client name and deadline,
+and could write to them. The repo is public, which documents both the URL and the API. What
+mitigates it: the site is `noindex` and `robots.txt`-disallowed so it stays out of search, the
+functions are rate-limited, and the server keeps an append-only op log — so even a destructive
+write is recoverable from history rather than gone.
 
-This exposes `NETLIFY_DB_URL` to the functions and applies
-`netlify/database/migrations/0001_ops.sql` on the next production deploy.
-
-**3. Set the two secrets.** Without these, `/api/auth` returns 500 and neither of you can sign in:
-
-```bash
-netlify env:set BULLETS_PASSPHRASE "the shared phrase you two agree on"
-netlify env:set BULLETS_SECRET "$(openssl rand -hex 32)"
-```
-
-`BULLETS_SECRET` signs the bearer tokens — generate it, don't invent one. Changing it later
-signs everyone out, which is also how you'd revoke access.
-
-Nothing needs setting up for AI. The Netlify AI Gateway injects `ANTHROPIC_API_KEY` and
-`ANTHROPIC_BASE_URL` into the functions automatically and bills through Netlify credits.
+If that trade ever stops feeling right, the fix is one comparison in
+`netlify/functions/auth.mts`: check a shared secret before minting a token, and set it as a
+Netlify env var. Nothing else in the stack changes.
 
 | Command | Does |
 |---|---|
@@ -167,15 +159,26 @@ the widget, which is Kotlin either way.
   [docs/firebase-setup.md](docs/firebase-setup.md) for the ~10 minute file drop
   that switches it on with no code change.
 
-Releases are built by GitHub Actions on a tag:
+Releases are built by GitHub Actions on a tag. Bump the version in `package.json` first — the
+in-app updater compares that against the release tag:
 
 ```bash
-git tag v1.0.0 && git push --tags
+npm version patch --no-git-tag-version && git commit -am "Release" && git tag v$(node -p "require('./package.json').version") && git push --follow-tags
 ```
 
-Without a signing keystore configured it produces a debug-signed APK so the
-pipeline is useful from day one. See [docs/android-signing.md](docs/android-signing.md)
-to set up real signing.
+**Signing is configured.** A 4096-bit release keystore is generated and its four secrets are
+set on the repo, so releases are properly signed and install over each other in place. The
+keystore lives at `~/.bullets-signing/` — **back that directory up to 1Password.** Losing it
+means never being able to update an installed APK again without uninstalling first, which
+wipes anything that hasn't synced. See [docs/android-signing.md](docs/android-signing.md).
+
+### Updating the app
+
+The APK checks GitHub Releases for a newer tag (at most every six hours, and on demand) and
+offers it as a quiet slab at the bottom of Today. Tapping it hands the download to Android,
+which asks you to confirm the install — that consent prompt is the OS's job and we don't try
+to route around it. No update server, because the repo is public and the releases API is
+readable without a token.
 
 ## Deliberately not built
 

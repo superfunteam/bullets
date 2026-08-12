@@ -2,29 +2,30 @@ import type { Config } from '@netlify/functions';
 import { mint } from '../lib/auth.mts';
 
 /**
- * Two users, no signup, no email. A shared space passphrase unlocks the space,
- * then you say which of the two you are.
+ * Identity, not authentication.
+ *
+ * There is no passphrase. This space is deliberately open — see README — so
+ * this endpoint hands a signed token to whoever asks for one. What the
+ * signature buys is that the token cannot be *edited*: nobody can hand
+ * /api/sync a hand-rolled token claiming to be Clark, so attribution on the
+ * huddle board and in the op log stays honest.
+ *
+ * If this ever needs to become a real gate, it is one comparison: check a
+ * shared secret here before minting. Nothing else in the stack changes.
  */
 export default async (req: Request) => {
   const secret = process.env.BULLETS_SECRET;
-  const passphrase = process.env.BULLETS_PASSPHRASE;
-
-  if (!secret || !passphrase) {
-    return new Response('Server not configured: set BULLETS_SECRET and BULLETS_PASSPHRASE', {
-      status: 500,
-    });
+  if (!secret) {
+    return new Response('Server not configured: set BULLETS_SECRET', { status: 500 });
   }
 
-  let body: { passphrase?: string; person?: string };
+  let body: { person?: string };
   try {
     body = await req.json();
   } catch {
     return new Response('Bad request', { status: 400 });
   }
 
-  if (body.passphrase !== passphrase) {
-    return new Response('Wrong passphrase', { status: 401 });
-  }
   if (body.person !== 'clark' && body.person !== 'angie') {
     return new Response('Unknown person', { status: 400 });
   }
@@ -38,5 +39,6 @@ export default async (req: Request) => {
 export const config: Config = {
   path: '/api/auth',
   method: 'POST',
-  rateLimit: { windowSize: 60, windowLimit: 20 },
+  // Costs the two of us nothing and stops anyone cheaply hammering it.
+  rateLimit: { windowSize: 60, windowLimit: 30 },
 };

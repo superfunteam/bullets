@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useMemo } from 'react';
 import { ShotCard } from './ShotCard';
 import { HuddleStrip } from './HuddleStrip';
+import { UpdateBanner } from './UpdateBanner';
 import { Empty, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { settle } from '../design/springs';
@@ -167,6 +168,8 @@ export function TodayView({
           </Slab>
         </motion.button>
       )}
+
+      <UpdateBanner />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { RequestHuddleSheet } from './views/RequestHuddleSheet';
 import { BulletZoom } from './views/BulletZoom';
 import { PullDeck } from './views/PullDeck';
 import { SignIn } from './views/SignIn';
+import { Onboarding } from './views/Onboarding';
 import { restoreIdentity } from './sync/auth';
 import { startSync } from './sync/client';
 import { useHuddles } from './data/store';
@@ -26,8 +27,13 @@ type Overlay =
   | { kind: 'pull'; mode: 'weekly' | 'daily' }
   | { kind: 'huddle'; huddleId: string };
 
+const ONBOARDED_KEY = 'bullets.onboarded';
+
 export function App() {
   const [person, setPerson] = useState<Person | null>(() => restoreIdentity());
+  const [onboarded, setOnboarded] = useState(
+    () => localStorage.getItem(ONBOARDED_KEY) === '1',
+  );
   const [tab, setTab] = useState<Tab>('today');
   const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
   const [capturing, setCapturing] = useState(false);
@@ -127,6 +133,20 @@ export function App() {
     (huddleId: string) => setOverlay({ kind: 'huddle', huddleId }),
     [],
   );
+
+  // Onboarding first, then identity. Explaining what the thing is before asking
+  // who you are is the right order, and it means Angie sees it on her own
+  // device too rather than only whoever installed first.
+  if (!onboarded) {
+    return (
+      <Onboarding
+        onDone={() => {
+          localStorage.setItem(ONBOARDED_KEY, '1');
+          setOnboarded(true);
+        }}
+      />
+    );
+  }
 
   if (!person) return <SignIn onDone={setPerson} />;
 
