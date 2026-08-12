@@ -98,12 +98,15 @@ export function App() {
 
   return (
     <div className="min-h-dvh" style={{ paddingTop: 'var(--inset-top)' }}>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.main
+      {/* No AnimatePresence around the tabs on purpose. `mode="wait"` would
+          hold the new view until the old one finished animating out, which
+          reads as lag on every single tab press — the opposite of how a native
+          tab bar behaves. The outgoing view unmounts immediately and the
+          incoming one springs in. */}
+      <motion.main
           key={tab}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
           transition={settle}
         >
           {tab === 'today' && (
@@ -129,8 +132,7 @@ export function App() {
           {tab === 'huddles' && (
             <HuddlesView onOpen={openHuddle} onRequest={() => setRequesting(true)} />
           )}
-        </motion.main>
-      </AnimatePresence>
+      </motion.main>
 
       <TabBar
         tab={tab}
