@@ -138,7 +138,17 @@ function IncomingBanner({
   items: { bullet: Bullet; tension: ReturnType<typeof tensionOf> }[];
   onZoom: (id: string) => void;
 }) {
-  const worst = items.some(i => i.tension.level === 'wide') ? 'wide' : 'incoming';
+  const anyWide = items.some(i => i.tension.level === 'wide');
+  const anyIncoming = items.some(i => i.tension.level === 'incoming');
+  const worst = anyWide ? 'wide' : 'incoming';
+  // The heading has to describe what's actually in the list. Saying "targets
+  // have passed" over a set that is mostly merely close is the kind of small
+  // dishonesty that trains you to stop reading the banner.
+  const heading = anyWide && anyIncoming
+    ? 'Needs aiming'
+    : anyWide
+      ? 'Targets have passed'
+      : 'Incoming';
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -155,7 +165,7 @@ function IncomingBanner({
           className="meta uppercase"
           style={{ color: worst === 'wide' ? 'var(--wide)' : 'var(--incoming)' }}
         >
-          {worst === 'wide' ? 'Targets have passed' : 'Incoming'}
+          {heading}
         </p>
         <div className="mt-3 space-y-2.5">
           {items.slice(0, 4).map(({ bullet, tension }) => (

@@ -86,7 +86,8 @@ export function ShotCard({
 
         <motion.div className="relative px-6 py-7 pl-8" style={{ x: titleShift }}>
           <div className="flex items-start gap-3">
-            <span className="mt-1.5 text-xl">
+            {/* Aligned to the first line's optical centre, not its box. */}
+            <span className="mt-[0.55rem]">
               <KindGlyph kind={bullet.kind} />
             </span>
             <h3

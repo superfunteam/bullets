@@ -49,14 +49,35 @@ export function ClientDot({ hue, name }: { hue: number; name?: string }) {
   );
 }
 
-/** Classic bullet journal signifier: a dot, a circle, a dash. */
-export function KindGlyph({ kind }: { kind: BulletKind }) {
+/**
+ * Classic bullet journal signifier: a filled dot for a task, a ring for an
+ * event, a dash for a note.
+ *
+ * Drawn rather than typed. The glyph characters render at wildly different
+ * optical sizes across faces, which left the mark looking orphaned next to a
+ * large title instead of anchoring it.
+ */
+export function KindGlyph({ kind, size = 16 }: { kind: BulletKind; size?: number }) {
   return (
-    <span aria-hidden className="text-[var(--ink-3)] select-none">
-      {KIND_GLYPH[kind]}
-    </span>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      aria-hidden
+      className="shrink-0 text-[var(--ink-3)]"
+    >
+      {kind === 'task' && <circle cx="8" cy="8" r="4" fill="currentColor" />}
+      {kind === 'event' && (
+        <circle cx="8" cy="8" r="4.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      )}
+      {kind === 'note' && (
+        <path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      )}
+    </svg>
   );
 }
+
+export { KIND_GLYPH };
 
 /**
  * Target tension, rendered. This is the one place saturated semantic color is

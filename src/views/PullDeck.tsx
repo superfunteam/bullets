@@ -654,7 +654,7 @@ function Summary({
   atRisk: { bullet: Bullet; tension: Tension }[];
   onDone: () => void;
 }) {
-  const window = weekly ? 'this week' : 'today';
+  const when = weekly ? 'this week' : 'today';
 
   return (
     <motion.div
@@ -677,7 +677,7 @@ function Summary({
         ) : (
           <>
             <span className="numeral">{pulled.length}</span>{' '}
-            {pulled.length === 1 ? 'bullet is' : 'bullets are'} aimed at {window}. Everything else
+            {pulled.length === 1 ? 'bullet is' : 'bullets are'} aimed at {when}. Everything else
             stays where you left it — nothing was called off.
           </>
         )}
