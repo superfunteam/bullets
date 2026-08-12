@@ -53,7 +53,39 @@ export function App() {
     if (!person) return;
     void seedIfEmpty();
     startSync();
+
+    // Native-only. Both are no-ops on web.
+    void (async () => {
+      try {
+        const notify = await import('./native/notify');
+        // Exact alarms are a separate grant from notifications, and on Android
+        // 14+ a fresh install does NOT have it. Without it every reminder is
+        // batched by Doze and can land after the huddle has already started —
+        // silently, since scheduling still resolves fine.
+        await notify.ensureExactAlarms(true);
+        notify.onNotificationTap(route => {
+          if (route.startsWith('/huddle/')) {
+            setOverlay({ kind: 'huddle', huddleId: route.split('/')[2] });
+          }
+        });
+      } catch {
+        /* web build */
+      }
+    })();
   }, [person]);
+
+  // The exact-alarm grant can be revoked while we're backgrounded, which makes
+  // Android drop the alarms it already accepted. Re-check on resume.
+  useEffect(() => {
+    const onResume = () => {
+      if (document.hidden) return;
+      void import('./native/notify')
+        .then(n => n.revalidateReminders())
+        .catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onResume);
+    return () => document.removeEventListener('visibilitychange', onResume);
+  }, []);
 
   // Deep links from the widget and from notification taps.
   useEffect(() => {

@@ -59,6 +59,9 @@ async function cursor(): Promise<number> {
   return ((await db.meta.get('cursor'))?.value as number | undefined) ?? 0;
 }
 
+/** Matches MAX_OPS_PER_PULL in netlify/functions/sync.mts. */
+const PAGE_SIZE = 2000;
+
 export async function syncOnce(): Promise<void> {
   const token = getToken();
   if (!token || inFlight) return;
@@ -66,22 +69,44 @@ export async function syncOnce(): Promise<void> {
 
   try {
     const outgoing = await pending();
-    const res = await fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ since: await cursor(), ops: outgoing, context }),
-    });
-    if (!res.ok) throw new Error(`sync failed: ${res.status}`);
+    let sentOutbox = false;
+    let pages = 0;
 
-    const body = (await res.json()) as { seq: number; ops: Op[]; presence?: string[] };
+    // The server caps a pull at PAGE_SIZE. A single request would leave the
+    // rest of the backlog stranded until the next tick, and on a first sync
+    // against an established log that stalls indefinitely at one page per
+    // poll. Keep going while pages come back full.
+    for (;;) {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          since: await cursor(),
+          // Only push the outbox on the first request of the loop.
+          ops: sentOutbox ? [] : outgoing,
+          context,
+        }),
+      });
+      if (!res.ok) throw new Error(`sync failed: ${res.status}`);
 
-    if (body.ops?.length) await applyLocal(body.ops);
-    await db.meta.put({ key: 'cursor', value: body.seq });
+      const body = (await res.json()) as { seq: number; ops: Op[]; presence?: string[] };
 
-    // Ack by explicit id so anything enqueued mid-flight survives.
-    if (outgoing.length) await ack(outgoing.map(o => o.opId));
+      if (!sentOutbox) {
+        sentOutbox = true;
+        // Ack by explicit id so anything enqueued mid-flight survives.
+        if (outgoing.length) await ack(outgoing.map(o => o.opId));
+      }
 
-    present = body.presence ?? [];
+      if (body.ops?.length) await applyLocal(body.ops);
+      await db.meta.put({ key: 'cursor', value: body.seq });
+      present = body.presence ?? [];
+
+      // The server re-delivers a 30s overlap window to cover the bigserial
+      // commit gap, so a short page is the real end-of-backlog signal.
+      if (!body.ops || body.ops.length < PAGE_SIZE) break;
+      if (++pages > 50) break; // pathological backlog; next tick continues
+    }
+
     online = true;
 
     // Keep the home screen widget and the scheduled huddle reminders current.
