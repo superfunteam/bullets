@@ -40,6 +40,25 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # The wrapper fetches the Gradle distribution from GitHub's CDN on first
+      # use, and a transient 503 there failed a release with nothing wrong in
+      # the build. Warm it up with retries so a CDN blip costs seconds, not a
+      # re-run of the whole workflow.
+      - name: Warm the Gradle distribution
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          for attempt in 1 2 3 4 5; do
+            if ./gradlew --version >/dev/null 2>&1; then
+              echo "gradle ready (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::gradle distribution fetch failed (attempt $attempt); retrying"
+            sleep $((attempt * 15))
+          done
+          echo "::error::could not fetch the Gradle distribution after 5 attempts"
+          exit 1
+
       - run: npm ci
       - run: npm run build
       - run: npx cap sync android
