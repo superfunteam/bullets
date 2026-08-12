@@ -6,10 +6,11 @@ import { timeOfDay } from '../lib/dates';
 /**
  * Huddle notifications.
  *
- * These are locally scheduled through AlarmManager, which means they survive
- * both app kill and reboot and fire at the exact second with no network
- * involved. That reliability is the entire point: advance warning is the
- * feature, so the mechanism delivering it cannot be best-effort.
+ * Android schedules these through AlarmManager, so they survive app kill and
+ * reboot and fire at the exact second with no network involved. The macOS app
+ * stays resident in the menu bar and asks Electron's native notification API
+ * to fire them. Its “close window” action therefore does not stop reminders;
+ * only quitting Bullets does.
  *
  * Instant "Angie just called a huddle" alerts need FCM — background polling
  * cannot do it, because Doze suspends network access and blocks WorkManager
@@ -18,8 +19,18 @@ import { timeOfDay } from '../lib/dates';
 
 const CHANNEL_ID = 'huddles';
 const LEAD_MINUTES = 30;
+const isDesktop = (): boolean => typeof window !== 'undefined' && !!window.bulletsDesktop;
+
+type ScheduledReminder = {
+  id: number;
+  title: string;
+  body: string;
+  route: string;
+  at: number;
+};
 
 export async function ensureNotificationPermission(): Promise<boolean> {
+  if (isDesktop()) return window.bulletsDesktop!.notifications.isSupported();
   if (!Capacitor.isNativePlatform()) return false;
 
   if (Capacitor.getPlatform() === 'android') {
@@ -79,43 +90,56 @@ export async function scheduleHuddleReminders(huddles: Huddle[]): Promise<void> 
 
   if (!(await ensureNotificationPermission())) return;
 
-  // Cancel only ids we own. A blanket cancel would silently delete any other
-  // notification the app ever schedules.
-  const ours = new Set(upcoming.flatMap(h => [idFor(h.id, 1), idFor(h.id, 2)]));
-  const existing = await LocalNotifications.getPending();
-  const stale = existing.notifications.filter(n => isOurs(n.id) && !ours.has(n.id));
-  if (stale.length) await LocalNotifications.cancel({ notifications: stale });
+  if (!isDesktop()) {
+    // Cancel only ids we own. A blanket cancel would silently delete any other
+    // notification the app ever schedules.
+    const ours = new Set(upcoming.flatMap(h => [idFor(h.id, 1), idFor(h.id, 2)]));
+    const existing = await LocalNotifications.getPending();
+    const stale = existing.notifications.filter(n => isOurs(n.id) && !ours.has(n.id));
+    if (stale.length) await LocalNotifications.cancel({ notifications: stale });
+  }
 
   lastSignature = signature;
 
-  const notifications = upcoming.flatMap(h => {
+  const reminders: ScheduledReminder[] = upcoming.flatMap(h => {
     const title = h.title ?? 'Huddle';
     const leadAt = h.startsAt - LEAD_MINUTES * 60_000;
-    const out = [];
+    const out: ScheduledReminder[] = [];
 
     if (leadAt > now) {
       out.push({
         id: idFor(h.id, 1),
-        channelId: CHANNEL_ID,
         title: `${title} in ${LEAD_MINUTES} min`,
         body: `${timeOfDay(h.startsAt)} · called by ${personName(h.calledBy)}`,
-        schedule: { at: new Date(leadAt), allowWhileIdle: true },
-        extra: { route: `/huddle/${h.id}` },
+        route: `/huddle/${h.id}`,
+        at: leadAt,
       });
     }
 
     out.push({
       id: idFor(h.id, 2),
-      channelId: CHANNEL_ID,
       title: `${title} starting now`,
       body: 'Tap to open the board',
-      schedule: { at: new Date(h.startsAt), allowWhileIdle: true },
-      extra: { route: `/huddle/${h.id}` },
+      route: `/huddle/${h.id}`,
+      at: h.startsAt,
     });
 
     return out;
   });
 
+  if (isDesktop()) {
+    await window.bulletsDesktop!.notifications.schedule(reminders);
+    return;
+  }
+
+  const notifications = reminders.map(reminder => ({
+    id: reminder.id,
+    channelId: CHANNEL_ID,
+    title: reminder.title,
+    body: reminder.body,
+    schedule: { at: new Date(reminder.at), allowWhileIdle: true },
+    extra: { route: reminder.route },
+  }));
   if (notifications.length) await LocalNotifications.schedule({ notifications });
 }
 
@@ -133,6 +157,7 @@ export async function scheduleHuddleReminders(huddles: Huddle[]): Promise<void> 
  * notifications, which is why this is re-checked on resume rather than once.
  */
 export async function ensureExactAlarms(prompt = false): Promise<boolean> {
+  if (isDesktop()) return true;
   if (!Capacitor.isNativePlatform()) return false;
   try {
     const s = await LocalNotifications.checkExactNotificationSetting();
@@ -151,12 +176,17 @@ export async function ensureExactAlarms(prompt = false): Promise<boolean> {
  * short-circuit on an unchanged signature.
  */
 export async function revalidateReminders(): Promise<void> {
+  if (isDesktop()) return;
   if (!Capacitor.isNativePlatform()) return;
   const ok = await ensureExactAlarms(false);
   if (!ok) lastSignature = '';
 }
 
 export function onNotificationTap(navigate: (route: string) => void): void {
+  if (isDesktop()) {
+    window.bulletsDesktop!.onRoute(navigate);
+    return;
+  }
   if (!Capacitor.isNativePlatform()) return;
   void LocalNotifications.addListener('localNotificationActionPerformed', event => {
     const route = event.notification.extra?.route;

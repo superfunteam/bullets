@@ -1,5 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 
+const isDesktop = (): boolean => typeof window !== 'undefined' && !!window.bulletsDesktop;
+
 /**
  * Where the API actually lives.
  *
@@ -19,7 +21,7 @@ export function apiBase(): string {
   const configured = import.meta.env.VITE_API_BASE as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
   // Same-origin on the web; the deployed site serves its own functions.
-  return Capacitor.isNativePlatform() ? FALLBACK : '';
+  return Capacitor.isNativePlatform() || isDesktop() ? FALLBACK : '';
 }
 
 export const apiUrl = (path: string): string => `${apiBase()}${path}`;

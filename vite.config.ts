@@ -4,6 +4,10 @@ import tailwindcss from '@tailwindcss/vite';
 import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
+  // A packaged Electron app loads index.html from file://. Relative asset URLs
+  // keep module chunks inside the app bundle; the web deployment still needs
+  // root-relative URLs so Netlify routes assets from its origin as usual.
+  base: process.env.VITE_DESKTOP ? './' : '/',
   plugins: [react(), tailwindcss()],
   define: {
     // The APK compares this against the latest GitHub release tag to decide

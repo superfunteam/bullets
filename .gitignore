@@ -1,5 +1,8 @@
 node_modules
 dist
+release
+demo-release
+electron/main.bundle.mjs
 dist-ssr
 .netlify
 .env

@@ -2,6 +2,8 @@
 
 > No more dodging.
 
+**Download:** [macOS app (DMG)](https://github.com/superfunteam/bullets/releases/latest) · [Android app (APK)](https://github.com/superfunteam/bullets/releases/download/v1.1.1/bullets-1.1.1.apk)
+
 A two-person, deadline-first to-do app built on bullet journal methodology, for
 Clark and Angie at Superfun. Web app on Netlify, plus an installable Android APK
 with a home screen widget.
@@ -145,7 +147,9 @@ Your own edits never wait on any of it.
 See [the design spec](docs/superpowers/specs/2026-08-12-bullets-design.md) for the
 full reasoning, and [docs/architecture.md](docs/architecture.md) for how to extend it.
 
-## Android
+## Apps
+
+### Android
 
 Capacitor wraps the same build. Not Flutter — that would mean rewriting the UI
 in Dart, losing the web app for desktop bulk editing, and it wouldn't help with
@@ -184,6 +188,32 @@ offers it as a quiet slab at the bottom of Today. Tapping it hands the download 
 which asks you to confirm the install — that consent prompt is the OS's job and we don't try
 to route around it. No update server, because the repo is public and the releases API is
 readable without a token.
+
+### macOS
+
+The Mac app is an **Electron** shell around the same Vite build — no Swift or
+separate UI. It uses the native title bar, lives in the menu bar after its
+window closes, and schedules huddle reminders through macOS notifications.
+Click the target in the menu bar for **Open Bullets**, **Quick capture**, or
+**Quit Bullets**. A notification click opens the relevant huddle.
+
+```bash
+npm run mac:dev   # build and launch the local app
+npm run mac:pack  # unsigned unpacked app in release/mac-*/
+npm run mac:demo  # private, unsigned universal ZIP in demo-release/
+npm run mac:dist  # universal (Intel + Apple Silicon) DMG + ZIP in release/
+```
+
+For sharing outside the development machine, the DMG must be signed with a
+Developer ID Application certificate and notarized by Apple; otherwise
+Gatekeeper will block notification events and warn users on install. The
+packaging setup automatically uses Electron Builder's standard `CSC_LINK`,
+`CSC_KEY_PASSWORD`, and Apple-notarization environment variables when they are
+provided. See [macOS signing and updates](docs/macos-signing.md) for the
+one-time GitHub Secrets setup.
+
+While Apple Developer enrollment is pending, see the [private two-person macOS
+demo](docs/macos-demo.md) path instead.
 
 ## Deliberately not built
 

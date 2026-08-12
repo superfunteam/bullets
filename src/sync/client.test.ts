@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { db, ENTITY_TABLES } from '../data/db';
 import { enqueue, pending } from '../data/outbox';
-import { setPace, syncOnce, currentInterval, presence, syncState } from './client';
+import { setPace, startSync, stopSync, syncOnce, currentInterval, presence, syncState } from './client';
 import type { Op } from '../data/ops';
 
 const op = (over: Partial<Op> = {}): Op => ({
@@ -44,6 +44,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  stopSync();
   vi.unstubAllGlobals();
 });
 
@@ -183,5 +184,20 @@ describe('adaptive pace', () => {
     setPace('live', 'huddle:x');
     expect(currentInterval()).toBeLessThan(idle);
     setPace('idle', null);
+  });
+
+  it('does not leave a polling loop behind after being stopped', async () => {
+    vi.useFakeTimers();
+    const calls = stubSync([{ seq: 0, ops: [] }]);
+
+    startSync();
+    await vi.advanceTimersByTimeAsync(0);
+    const afterFirstSync = calls.length;
+
+    stopSync();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(calls).toHaveLength(afterFirstSync);
+    vi.useRealTimers();
   });
 });

@@ -4,6 +4,8 @@
   "version": "1.1.1",
   "type": "module",
   "description": "Bullets — No more dodging. A two-person, deadline-first bullet journal for Superfun.",
+  "author": "Superfun",
+  "main": "electron/main.bundle.mjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,7 +14,41 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "cap:sync": "npm run build && cap sync android",
-    "cap:open": "cap open android"
+    "cap:open": "cap open android",
+    "build:electron": "esbuild electron/main.mjs --bundle --platform=node --format=esm --external:electron --outfile=electron/main.bundle.mjs",
+    "mac:dev": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron .",
+    "mac:pack": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --dir --mac",
+    "mac:demo": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac zip --universal --publish never --config.mac.identity=null --config.mac.hardenedRuntime=false --config.directories.output=demo-release",
+    "mac:dist": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac --universal"
+  },
+  "build": {
+    "appId": "team.superfun.bullets",
+    "productName": "Bullets",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json",
+      "!node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "superfunteam",
+        "repo": "bullets"
+      }
+    ]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
@@ -28,6 +64,7 @@
     "@use-gesture/react": "^10.3.1",
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
+    "electron-updater": "^6.8.9",
     "fractional-indexing": "^3.2.0",
     "motion": "^13.1.0",
     "react": "^19.2.8",
@@ -43,6 +80,9 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.5",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4.3.3",

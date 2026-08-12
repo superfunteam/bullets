@@ -108,6 +108,8 @@ export function App() {
 
     route(window.location.pathname);
 
+    const removeDesktopRoute = window.bulletsDesktop?.onRoute(route);
+
     let cancelled = false;
     void (async () => {
       // Only present inside the Capacitor APK; the web build skips it entirely.
@@ -125,6 +127,7 @@ export function App() {
 
     return () => {
       cancelled = true;
+      removeDesktopRoute?.();
     };
   }, []);
 

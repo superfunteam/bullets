@@ -42,6 +42,7 @@ let nudge: ReturnType<typeof setTimeout> | null = null;
 let inFlight = false;
 let present: string[] = [];
 let started = false;
+let releaseListeners: (() => void) | null = null;
 
 let state: SyncState = { status: 'ok', lastOkAt: null, queued: 0, error: null };
 
@@ -69,6 +70,7 @@ export const presence = (): string[] => present;
 export function setPace(next: Pace, ctx: string | null = null): void {
   pace = next;
   context = ctx;
+  if (!started) return;
   if (next === 'live') void syncOnce().catch(() => {});
   schedule();
 }
@@ -170,6 +172,7 @@ async function afterSync(): Promise<void> {
 }
 
 function schedule() {
+  if (!started) return;
   if (timer) clearTimeout(timer);
   timer = setTimeout(async () => {
     try {
@@ -177,7 +180,9 @@ function schedule() {
     } catch {
       /* offline is a normal state; the outbox holds */
     }
-    schedule();
+    // stopSync() can run while a request is in flight. Do not resurrect the
+    // polling loop after it has explicitly been stopped.
+    if (started) schedule();
   }, currentInterval());
 }
 
@@ -189,6 +194,7 @@ function schedule() {
  * edits is one request.
  */
 function pushSoon() {
+  if (!started) return;
   if (nudge) clearTimeout(nudge);
   nudge = setTimeout(() => {
     void syncOnce().catch(() => {});
@@ -201,19 +207,29 @@ export function startSync(): void {
 
   void syncOnce().catch(() => {});
   schedule();
-  onChange(pushSoon);
+  const unsubscribeChanges = onChange(pushSoon);
 
   const wake = () => void syncOnce().catch(() => {});
+  const wakeOnVisibility = () => {
+    if (!document.hidden) wake();
+  };
   addEventListener('focus', wake);
   addEventListener('online', wake);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) wake();
-  });
+  document.addEventListener('visibilitychange', wakeOnVisibility);
+  releaseListeners = () => {
+    unsubscribeChanges();
+    removeEventListener('focus', wake);
+    removeEventListener('online', wake);
+    document.removeEventListener('visibilitychange', wakeOnVisibility);
+  };
 }
 
 export function stopSync(): void {
   if (timer) clearTimeout(timer);
   if (nudge) clearTimeout(nudge);
   timer = null;
+  nudge = null;
+  releaseListeners?.();
+  releaseListeners = null;
   started = false;
 }

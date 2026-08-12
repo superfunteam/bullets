@@ -20,6 +20,12 @@ export type WidgetPayload = {
   updatedAt: number;
 };
 
+/** Last successfully published display state; process-local by design. */
+let lastPayloadSignature = '';
+
+export const widgetPayloadSignature = (payload: WidgetPayload): string =>
+  JSON.stringify([payload.date, payload.openCount, payload.titles]);
+
 interface WidgetBridgePlugin {
   refresh(): Promise<void>;
 }
@@ -58,6 +64,15 @@ export async function publishWidget(): Promise<void> {
     updatedAt: Date.now(),
   };
 
+  const signature = widgetPayloadSignature(payload);
+  // sync succeeds every few seconds while two people are in a huddle. The
+  // widget's visible state normally does not change, so avoid repeatedly
+  // waking the launcher and rewriting shared storage for identical content.
+  if (signature === lastPayloadSignature) return;
+
   await Preferences.set({ key: 'widget', value: JSON.stringify(payload) });
   await refreshWidget();
+  // Set this only after persistence succeeds; a transient failure must retry
+  // on the next sync rather than leaving a stale home-screen widget forever.
+  lastPayloadSignature = signature;
 }
