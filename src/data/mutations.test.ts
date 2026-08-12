@@ -6,6 +6,9 @@ import {
   completeBullet,
   moveToHorizon,
   settleFromOps,
+  setCompletedCount,
+  rollForwardNow,
+  setTitle,
   deleteBullet,
   reopenBullet,
   completeShot,
@@ -24,7 +27,7 @@ import {
 import { pending } from './outbox';
 import { applyLocal } from './mutations';
 import { seedIfEmpty } from './seed';
-import { today, weekStart } from '../lib/dates';
+import { addDays, today, weekStart } from '../lib/dates';
 import { progressOf } from './selectors';
 import { hasAnswered, responseOf, type Bullet, type Huddle, type Shot } from './types';
 
@@ -487,5 +490,107 @@ describe('hitting a shot tidies up after itself', () => {
 
     expect((await bulletOf(child)).state).toBe('done');
     expect((await bulletOf(parent)).state).toBe('done');
+  });
+});
+
+describe('tapping a progress dot', () => {
+  const progress = async (id: string) =>
+    (await shotsOf(id)).filter(s => s.state === 'done').reduce((n, s) => n + (s.amount ?? 1), 0);
+
+  it('sets progress to exactly the dot you tapped', async () => {
+    const id = await createBullet({ title: '20 posts', count: { total: 20, unit: 'posts' } });
+    await setCompletedCount(id, 7);
+    expect(await progress(id)).toBe(7);
+  });
+
+  it('closes work already planned before recording a remainder', async () => {
+    const id = await createBullet({ title: '20 posts', count: { total: 20, unit: 'posts' } });
+    await pullToDay(id, today(), 5);
+
+    await setCompletedCount(id, 5);
+
+    // The scheduled shot is what got finished, not an extra one alongside it.
+    const shots = await shotsOf(id);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].state).toBe('done');
+  });
+
+  it('can be turned back down', async () => {
+    const id = await createBullet({ title: '20 posts', count: { total: 20, unit: 'posts' } });
+    await setCompletedCount(id, 12);
+    await setCompletedCount(id, 3);
+    expect(await progress(id)).toBe(3);
+  });
+
+  it('finishes the bullet when the last dot is tapped, and reopens below it', async () => {
+    const id = await createBullet({ title: '5 posts', count: { total: 5, unit: 'posts' } });
+    await setCompletedCount(id, 5);
+    expect((await bulletOf(id)).state).toBe('done');
+
+    await setCompletedCount(id, 4);
+    expect((await bulletOf(id)).state).toBe('open');
+  });
+
+  it('clamps rather than overshooting the total', async () => {
+    const id = await createBullet({ title: '5 posts', count: { total: 5, unit: 'posts' } });
+    await setCompletedCount(id, 99);
+    expect(await progress(id)).toBe(5);
+    await setCompletedCount(id, -3);
+    expect(await progress(id)).toBe(0);
+  });
+
+  it('does nothing to an uncounted bullet', async () => {
+    const id = await createBullet({ title: 'Simple' });
+    await setCompletedCount(id, 3);
+    expect(await shotsOf(id)).toHaveLength(0);
+  });
+});
+
+describe('NOW means today', () => {
+  it('carries an unmet commitment from yesterday onto today', async () => {
+    const id = await createBullet({ title: 'Still NOW', horizon: 'now' });
+    const shot = (await shotsOf(id))[0];
+    // As the passage of time would leave it.
+    await db.shots.update(shot.id, { date: addDays(today(), -1) } as never);
+
+    const moved = await rollForwardNow();
+
+    expect(moved).toBe(1);
+    const open = (await shotsOf(id)).filter(s => s.state === 'open');
+    expect(open).toHaveLength(1);
+    expect(open[0].date).toBe(today());
+  });
+
+  it('leaves work already on today alone', async () => {
+    const id = await createBullet({ title: 'Already today', horizon: 'now' });
+    expect(await rollForwardNow()).toBe(0);
+    expect(await shotsOf(id)).toHaveLength(1);
+  });
+
+  it('does not resurrect a stale commitment that was completed', async () => {
+    const id = await createBullet({ title: 'Done yesterday', horizon: 'now' });
+    const shot = (await shotsOf(id))[0];
+    await db.shots.update(shot.id, { date: addDays(today(), -1) } as never);
+    await completeShot(shot.id);
+
+    await rollForwardNow();
+
+    // Finishing it made the bullet done; there is nothing to carry.
+    expect((await bulletOf(id)).state).toBe('done');
+  });
+
+  it('ignores bullets that are not on NOW', async () => {
+    const id = await createBullet({ title: 'Later thing', horizon: 'later' });
+    expect(await rollForwardNow()).toBe(0);
+    expect(await shotsOf(id)).toHaveLength(0);
+  });
+});
+
+describe('writes that change nothing are not written', () => {
+  it('does not append an op for an identical value', async () => {
+    const id = await createBullet({ title: 'Same', horizon: 'shelf' });
+    await db.outbox.clear();
+    await setTitle(id, 'Same');
+    expect(await db.outbox.count(), 'a no-op write still cost an op').toBe(0);
   });
 });

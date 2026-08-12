@@ -19,6 +19,7 @@ import { startSync } from './sync/client';
 import { useHuddles } from './data/store';
 import { getActor } from './data/mutations';
 import { seedIfEmpty } from './data/seed';
+import { rollForwardNow } from './data/mutations';
 import { HORIZON_META, hasAnswered, type Person } from './data/types';
 
 type Overlay =
@@ -59,6 +60,9 @@ export function App() {
   useEffect(() => {
     if (!person) return;
     void seedIfEmpty();
+    // NOW means today, so opening the app is enough to slot it in — including
+    // anything committed yesterday and never done.
+    void rollForwardNow();
     startSync();
 
     // Native-only. Both are no-ops on web.
@@ -83,6 +87,19 @@ export function App() {
 
   // The exact-alarm grant can be revoked while we're backgrounded, which makes
   // Android drop the alarms it already accepted. Re-check on resume.
+  // The day rolls over while the app sits open overnight.
+  useEffect(() => {
+    const onWake = () => {
+      if (!document.hidden) void rollForwardNow();
+    };
+    document.addEventListener('visibilitychange', onWake);
+    const t = setInterval(onWake, 10 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onWake);
+      clearInterval(t);
+    };
+  }, []);
+
   useEffect(() => {
     const onResume = () => {
       if (document.hidden) return;

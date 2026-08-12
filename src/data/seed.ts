@@ -14,15 +14,30 @@ import { mutate } from './mutations';
  * Renamable and archivable — these are a starting point, not a fixture.
  */
 const STARTERS: { id: string; name: string; hue: number }[] = [
-  { id: 'client-superfun', name: 'Superfun', hue: 25 },
-  { id: 'client-one', name: 'Client One', hue: 150 },
-  { id: 'client-two', name: 'Client Two', hue: 250 },
-  { id: 'client-three', name: 'Client Three', hue: 320 },
+  { id: 'client-sourceday', name: 'SourceDay', hue: 25 },
+  { id: 'client-michigan-public', name: 'Michigan Public', hue: 205 },
+  { id: 'client-red-oak', name: 'Red Oak', hue: 15 },
+  { id: 'client-games', name: 'Games', hue: 150 },
+  { id: 'client-fun', name: 'Fun', hue: 300 },
 ];
 
+/** The placeholder clients shipped before the real list existed. */
+const RETIRED = ['client-superfun', 'client-one', 'client-two', 'client-three'];
+
 export async function seedIfEmpty(): Promise<void> {
-  if ((await db.clients.count()) > 0) return;
+  const existing = await db.clients.toArray();
+  const live = existing.filter(c => !c.deletedAt);
+
+  // Retire the placeholders. They synced to both devices before the real list
+  // existed, so changing STARTERS alone would leave them on every device that
+  // had already seeded. Soft delete, so the tombstone travels too.
+  for (const c of live) {
+    if (RETIRED.includes(c.id)) await mutate('client', c.id, { deletedAt: Date.now() });
+  }
+
+  const have = new Set(live.map(c => c.id));
   for (const c of STARTERS) {
+    if (have.has(c.id)) continue;
     await mutate('client', c.id, { name: c.name, hue: c.hue });
   }
 }

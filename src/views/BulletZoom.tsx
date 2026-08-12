@@ -12,6 +12,7 @@ import {
   deleteBullet,
   pullToDay,
   reopenBullet,
+  setCompletedCount,
   moveToHorizon,
   unpull,
 } from '../data/mutations';
@@ -134,20 +135,35 @@ export function BulletZoom({
                     {bullet.count.unit}
                   </p>
                 </div>
+                {/* Each dot is a control, not decoration: tap the 7th and 7 are
+                    done, tap the last filled one to take it back. Dots are the
+                    natural place to reach for, and making them inert pushed
+                    every count change through the Pull. */}
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {Array.from({ length: total }, (_, i) => (
-                    <motion.span
-                      key={i}
-                      initial={{ scale: 0.4, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ ...snap, delay: Math.min(i * 0.012, 0.3) }}
-                      className="h-7 w-7 rounded-[8px]"
-                      style={{
-                        background: i < done ? 'var(--hit)' : 'var(--surface-2)',
-                      }}
-                    />
-                  ))}
+                  {Array.from({ length: total }, (_, i) => {
+                    const filled = i < done;
+                    return (
+                      <motion.button
+                        key={i}
+                        type="button"
+                        aria-label={`Mark ${i + 1} of ${total} ${bullet.count!.unit} done`}
+                        aria-pressed={filled}
+                        onClick={() =>
+                          void setCompletedCount(bullet.id, done === i + 1 ? i : i + 1)
+                        }
+                        initial={{ scale: 0.4, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        whileTap={{ scale: 0.82 }}
+                        transition={{ ...snap, delay: Math.min(i * 0.012, 0.3) }}
+                        className="h-9 w-9 rounded-[10px]"
+                        style={{ background: filled ? 'var(--hit)' : 'var(--surface-2)' }}
+                      />
+                    );
+                  })}
                 </div>
+                <p className="meta mt-2 text-[var(--ink-3)]">
+                  Tap a square to set how many are done.
+                </p>
               </section>
             )}
 
@@ -344,15 +360,39 @@ export function BulletZoom({
                 </BigButton>
               ) : (
                 <>
-                  <BigButton
-                    tone="hit"
-                    onClick={() => {
-                      void completeBullet(bullet.id);
-                      onClose();
-                    }}
-                  >
-                    {children.length > 0 ? 'Mark the whole thing done' : 'Mark done'}
-                  </BigButton>
+                  {/* A counted bullet has two plausible meanings for "done" and
+                      guessing wrong silently finishes twenty posts, so ask. */}
+                  {bullet.count && done < total ? (
+                    <div className="space-y-2.5">
+                      <BigButton
+                        tone="hit"
+                        onClick={() => {
+                          void setCompletedCount(bullet.id, done + 1);
+                        }}
+                      >
+                        Did 1 more {singular(bullet.count.unit)}
+                      </BigButton>
+                      <BigButton
+                        tone="quiet"
+                        onClick={() => {
+                          void completeBullet(bullet.id);
+                          onClose();
+                        }}
+                      >
+                        Finish all {total - done} remaining
+                      </BigButton>
+                    </div>
+                  ) : (
+                    <BigButton
+                      tone="hit"
+                      onClick={() => {
+                        void completeBullet(bullet.id);
+                        onClose();
+                      }}
+                    >
+                      {children.length > 0 ? 'Mark the whole thing done' : 'Mark done'}
+                    </BigButton>
+                  )}
 
                   {onToday ? (
                     <BigButton
@@ -421,4 +461,11 @@ export function BulletZoom({
       </motion.div>
     </motion.div>
   );
+}
+
+/** "posts" -> "post". Good enough for the units two people actually type. */
+function singular(unit: string): string {
+  if (unit.endsWith('ies')) return `${unit.slice(0, -3)}y`;
+  if (unit.endsWith('ses') || unit.endsWith('xes')) return unit.slice(0, -2);
+  return unit.endsWith('s') ? unit.slice(0, -1) : unit;
 }

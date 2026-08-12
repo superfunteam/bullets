@@ -68,7 +68,7 @@ export function CaptureSheet({
 
   const today = todayFn();
   const targets: { label: string; day?: string }[] = [
-    { label: 'None', day: undefined },
+    { label: 'No deadline', day: undefined },
     { label: 'Today', day: today },
     { label: 'Tomorrow', day: addDays(today, 1) },
     { label: 'This Friday', day: nextFriday(today) },
@@ -88,7 +88,7 @@ export function CaptureSheet({
                      text-[var(--ink)] placeholder:text-[var(--ink-3)]"
         />
 
-        <Field label="Horizon">
+        <Field label="When will you do it?">
           <div className="flex flex-wrap gap-2">
             {HORIZONS.map(h => (
               <motion.button
@@ -126,7 +126,12 @@ export function CaptureSheet({
           </Field>
         )}
 
-        <Field label="Target">
+        {/* Renamed and demoted on purpose. Sitting under the horizon row and
+            labelled "Target", the "Today" chip read as *schedule it for today*
+            — so a bullet picked up a hard deadline nobody meant to set, and
+            then a countdown nobody asked for. Horizon is when you will do it;
+            this is only for a date someone else is holding you to. */}
+        <Field label="Hard deadline — only if a client set one">
           <div className="flex flex-wrap gap-2">
             {targets.map(t => (
               <Pill key={t.label} active={deadline === t.day} onClick={() => setDeadline(t.day)}>
