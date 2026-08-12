@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- The mark is reversed out of near-black, so the adaptive background has
+         to be dark too. On white the launcher framed a black tile in a white
+         ring at every corner radius. -->
+    <color name="ic_launcher_background">#0F0F0F</color>
 </resources>

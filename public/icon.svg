@@ -1,8 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bullets">
-  <rect width="512" height="512" rx="112" fill="#1c1917"/>
-  <!-- A target: three rings and a mark that has already landed off-centre,
-       which is the honest version of how a week actually goes. -->
-  <circle cx="256" cy="256" r="150" fill="none" stroke="#f5f0e8" stroke-width="26" opacity="0.28"/>
-  <circle cx="256" cy="256" r="96" fill="none" stroke="#f5f0e8" stroke-width="26" opacity="0.55"/>
-  <circle cx="256" cy="256" r="44" fill="#e8722c"/>
+  <!-- Matches favicon.png: the mark reversed out of near-black. Browsers prefer
+       an SVG icon over the PNGs, so this has to be the same artwork or the tab
+       shows something different from every other surface. -->
+  <rect width="512" height="512" rx="112" fill="#0F0F0F"/>
+  <g transform="translate(124.5 116) scale(0.5617)" fill="#FFFFFF">
+    <path d="M65 275L354.5 275C417.184 275 468 325.816 468 388.5C468 451.184 417.184 502 354.5 502H65V275Z"/>
+    <path d="M0 0L289.5 0C352.184 0 403 50.8157 403 113.5C403 176.184 352.184 227 289.5 227H0V0Z"/>
+  </g>
 </svg>

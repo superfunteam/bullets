@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { settle, snap, stagger } from '../design/springs';
+import { Logo } from '../design/Logo';
 import { signIn } from '../sync/auth';
 import { PEOPLE, personName, type Person } from '../data/types';
 import { currentVersion } from '../native/update';
@@ -34,7 +35,10 @@ export function SignIn({ onDone }: { onDone: (p: Person) => void }) {
         transition={settle}
         className="mx-auto w-full max-w-md"
       >
-        <h1 className="display text-6xl text-[var(--ink)]">Bullets</h1>
+        <div className="flex items-center gap-4">
+          <Logo size={52} className="text-[var(--ink)]" />
+          <h1 className="display text-6xl text-[var(--ink)]">Bullets</h1>
+        </div>
         <p className="editorial mt-2 text-2xl text-[var(--ink-3)]">No more dodging.</p>
 
         <p className="meta mt-14 mb-4 text-[var(--ink-3)] uppercase">Who's holding the phone?</p>

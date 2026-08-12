@@ -6,14 +6,54 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
     />
-    <meta name="theme-color" content="#f7f5f2" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1a1815" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="Bullets — No more dodging." />
+    <title>Bullets</title>
+    <meta name="description" content="No more dodging. A deadline-first bullet journal for two." />
+
     <!-- Internal tool. Keep it out of search results. -->
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Matches the app canvas so the browser chrome doesn't seam against it. -->
+    <meta name="theme-color" content="#f7f5f2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1815" media="(prefers-color-scheme: dark)" />
+
+    <!-- Icons. The SVG wins wherever it is supported and stays crisp at any
+         size; the PNGs cover Safari and the browsers that ignore SVG favicons. -->
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <title>Bullets</title>
+    <link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/icon-16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Added to the home screen on iOS, this keeps it full-screen rather than
+         opening in a Safari chrome. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Bullets" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Unfurl. Absolute URLs are required: Slack, iMessage and the rest fetch
+         these from their own servers, where a relative path resolves to
+         nothing. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bullets" />
+    <meta property="og:title" content="Bullets" />
+    <meta
+      property="og:description"
+      content="No more dodging. A deadline-first bullet journal for two."
+    />
+    <meta property="og:url" content="https://bullets.superfun.team/" />
+    <meta property="og:image" content="https://bullets.superfun.team/unfurl.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="675" />
+    <meta property="og:image:alt" content="Bullets — no more dodging." />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Bullets" />
+    <meta
+      name="twitter:description"
+      content="No more dodging. A deadline-first bullet journal for two."
+    />
+    <meta name="twitter:image" content="https://bullets.superfun.team/unfurl.png" />
   </head>
   <body>
     <div id="root"></div>

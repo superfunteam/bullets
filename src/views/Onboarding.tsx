@@ -21,6 +21,7 @@ import { Slab } from '../design/Slab';
 import { BigButton, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap, stagger } from '../design/springs';
 import { HORIZONS, HORIZON_META } from '../data/types';
+import { Logo } from '../design/Logo';
 
 /**
  * Onboarding.
@@ -138,11 +139,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       }}
     >
       <header className="mx-auto flex w-full max-w-md shrink-0 items-center justify-between px-6">
-        <span
-          className="meta text-[var(--ink-3)] uppercase"
-          style={{ letterSpacing: '0.14em' }}
-        >
-          Bullets
+        <span className="flex items-center gap-2 text-[var(--ink-3)]">
+          <Logo size={14} />
+          <span className="meta uppercase" style={{ letterSpacing: '0.14em' }}>
+            Bullets
+          </span>
         </span>
         <motion.button
           type="button"
