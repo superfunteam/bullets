@@ -207,6 +207,15 @@ but *do* check the browser, and check both themes and both text scales.
   If you hand-build a `TensionBadge` for an illustration, check it against
   `selectors.ts` first.
 
+- **Scroll position is per-tab and lives in App.tsx.** Every view unmounts on a
+  tab change, so `goTab` stashes `window.scrollY` under the outgoing tab and a
+  `useLayoutEffect` puts it back for the incoming one. It has to be a LAYOUT
+  effect — a passive one paints the top of the list first and then jumps. It
+  also only works because the live queries in `store.ts` are cached: an
+  incoming view that renders empty has no document height yet, so any restored
+  offset is clamped straight back to 0. If you ever un-cache those queries, this
+  breaks silently and looks like a scroll bug.
+
 ---
 
 ## Where the reasoning lives

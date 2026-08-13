@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { TabBar, type Tab } from './design/TabBar';
 import { Toast } from './design/bits';
 import { settle } from './design/springs';
@@ -169,9 +169,38 @@ export function App() {
     [selection],
   );
 
+  /**
+   * Remember where each tab was scrolled to.
+   *
+   * Every view unmounts on a tab change, so without this you scroll halfway
+   * down the Shelf, glance at Week, come back, and you are at the top again —
+   * which on a long list is the difference between checking something and
+   * losing your place.
+   *
+   * This only became possible once the live queries were cached: the incoming
+   * view used to render empty on its first frame, so the document had no height
+   * yet and any scroll we restored was immediately clamped to 0. Now the rows
+   * are already there in the same commit, so a layout effect can put the offset
+   * back before the browser paints.
+   *
+   * Deliberately not persisted, and deliberately per-session: the offsets are
+   * meaningless once the underlying lists have changed.
+   */
+  const scrollByTab = useRef<Partial<Record<Tab, number>>>({});
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+
+  useLayoutEffect(() => {
+    // Layout, not passive: this has to land before paint or the new tab shows
+    // its top for a frame and then jumps.
+    window.scrollTo(0, scrollByTab.current[tab] ?? 0);
+  }, [tab]);
+
   // A selection belongs to the screen it was made on, so leaving cancels it.
   const goTab = useCallback(
     (next: Tab) => {
+      // Read from the ref so this callback stays stable across tab changes.
+      scrollByTab.current[tabRef.current] = window.scrollY;
       selection.clear();
       setTab(next);
     },
