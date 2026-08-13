@@ -1,10 +1,14 @@
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'motion/react';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { settle } from './springs';
 import { useDismissDrag } from './useDismissDrag';
 
 const DISMISS_DISTANCE = 110;
 const DISMISS_VELOCITY = 550;
+
+/** Open sheets, oldest first. Only the last one answers Escape. */
+const ESC_STACK: object[] = [];
 
 /**
  * Bottom sheet.
@@ -21,11 +25,23 @@ export function Sheet({
   children,
   title,
   showScrim = true,
+  layer = 'base',
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   title?: string;
+  /**
+   * 'over' puts this sheet above another one and portals it to <body>.
+   *
+   * Both parts are needed. The z-index because the base layer is z-40/z-50, and
+   * the portal because a sheet rendered inside another sheet's scrolling body
+   * would sit inside the element useDismissDrag is managing — the outer sheet's
+   * drag would fight the inner one's, which is the exact drag-versus-scroll
+   * trap in AGENTS.md. Portalling to <body> takes it out of that subtree
+   * entirely, so the two never share a gesture surface.
+   */
+  layer?: 'base' | 'over';
   /**
    * Set false for a sheet you keep working behind — the bulk sheet, where you
    * carry on ticking rows while it stands. The scrim is a `fixed inset-0` layer
@@ -35,6 +51,10 @@ export function Sheet({
    */
   showScrim?: boolean;
 }) {
+  const over = layer === 'over';
+  const zScrim = over ? 'z-[60]' : 'z-40';
+  const zPanel = over ? 'z-[70]' : 'z-50';
+
   const y = useMotionValue(0);
   // The backdrop lightens as the sheet is pulled down, so the gesture feels
   // like it's moving the whole screen rather than one floating panel.
@@ -52,12 +72,28 @@ export function Sheet({
     };
   }, [open, showScrim]);
 
-  // Escape is free on desktop and people expect it.
+  /**
+   * Escape closes the TOPMOST sheet only.
+   *
+   * Both sheets listen on window, so without the stack one Escape closed the
+   * picker and the capture sheet underneath it in the same keypress — you lose
+   * the bullet you were typing because you wanted to back out of a list.
+   */
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const token = {};
+    ESC_STACK.push(token);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (ESC_STACK[ESC_STACK.length - 1] !== token) return;
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      const i = ESC_STACK.indexOf(token);
+      if (i >= 0) ESC_STACK.splice(i, 1);
+    };
   }, [open, onClose]);
 
   useEffect(() => {
@@ -90,13 +126,13 @@ export function Sheet({
     };
   }, [open]);
 
-  return (
+  const tree = (
     <AnimatePresence>
       {open && (
         <>
           {showScrim && (
             <motion.div
-              className="fixed inset-0 z-40 bg-black"
+              className={`fixed inset-0 ${zScrim} bg-black`}
               style={{ opacity: scrim }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.45 }}
@@ -111,9 +147,9 @@ export function Sheet({
             role="dialog"
             aria-modal={showScrim ? 'true' : undefined}
             aria-label={title}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col
+            className={`fixed inset-x-0 bottom-0 ${zPanel} flex max-h-[92dvh] flex-col
                        rounded-t-[var(--r-xl)] border-t border-[var(--line)]
-                       bg-[var(--surface)] shadow-[var(--shadow-3)]"
+                       bg-[var(--surface)] shadow-[var(--shadow-3)]`}
             style={{ y }}
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
@@ -156,4 +192,6 @@ export function Sheet({
       )}
     </AnimatePresence>
   );
+
+  return over ? createPortal(tree, document.body) : tree;
 }

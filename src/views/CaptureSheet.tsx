@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Sheet } from '../design/Sheet';
-import { BigButton, HorizonChip } from '../design/bits';
+import { BigButton, ClientPill, HorizonChip } from '../design/bits';
+import { Icon } from '../design/icons';
 import { snap } from '../design/springs';
 import { createBullet } from '../data/mutations';
 import { useClients } from '../data/store';
@@ -28,23 +29,41 @@ export function CaptureSheet({
   const [title, setTitle] = useState('');
   const [horizon, setHorizon] = useState<Horizon>('shelf');
   const [clientId, setClientId] = useState<string | undefined>();
+  const [pickingClient, setPickingClient] = useState(false);
   const [deadline, setDeadline] = useState<string | undefined>();
   const [total, setTotal] = useState<number | undefined>();
   const [unit, setUnit] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const chosenClient = clients.find(c => c.id === clientId);
+
   useEffect(() => {
     if (!open) return;
     setTitle('');
     setHorizon('shelf');
-    setClientId(undefined);
+    setClientId(defaultClientId(clients));
+    setPickingClient(false);
     setDeadline(undefined);
     setTotal(undefined);
     setUnit('');
     setSaving(false);
     const t = setTimeout(() => inputRef.current?.focus(), 220);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset is per open
   }, [open]);
+
+  /**
+   * Clients come from a live query, so on a cold start the sheet can open a tick
+   * before they exist and the reset above has nothing to default to. Fill it in
+   * once they land — but only while the field is still untouched, so this can
+   * never overwrite a choice already made.
+   */
+  const touchedClient = useRef(false);
+  useEffect(() => {
+    if (!open || touchedClient.current || clientId) return;
+    const fallback = defaultClientId(clients);
+    if (fallback) setClientId(fallback);
+  }, [open, clients, clientId]);
 
   const save = async () => {
     const t = title.trim();
@@ -106,22 +125,25 @@ export function CaptureSheet({
 
         {clients.length > 0 && (
           <Field label="Client">
-            <div className="flex flex-wrap gap-2">
-              <Pill active={!clientId} onClick={() => setClientId(undefined)}>
-                None
-              </Pill>
-              {clients
-                .filter(c => !c.archived)
-                .map(c => (
-                  <Pill
-                    key={c.id}
-                    active={clientId === c.id}
-                    onClick={() => setClientId(c.id)}
-                  >
-                    {c.name}
-                  </Pill>
-                ))}
-            </div>
+            {/* One row, not every client at once. With five of them the pills
+                were the tallest thing in the sheet and pushed the deadline and
+                count fields below the fold on a phone. */}
+            <motion.button
+              type="button"
+              onClick={() => setPickingClient(true)}
+              whileTap={{ scale: 0.98 }}
+              transition={snap}
+              className="flex min-h-[var(--tap)] w-full items-center justify-between gap-3
+                         rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface-2)]
+                         px-4 py-3 text-left"
+            >
+              {chosenClient ? (
+                <ClientPill hue={chosenClient.hue} name={chosenClient.name} />
+              ) : (
+                <span className="text-[var(--ink-3)]">No client</span>
+              )}
+              <Icon name="chevron_right" size={18} className="text-[var(--ink-3)]" />
+            </motion.button>
           </Field>
         )}
 
@@ -169,8 +191,59 @@ export function CaptureSheet({
           Add bullet
         </BigButton>
       </div>
+
+      {/* layer="over" portals this to <body>: nested inside the capture sheet's
+          scrolling body it would share a gesture surface with its drag. */}
+      <Sheet
+        open={pickingClient}
+        onClose={() => setPickingClient(false)}
+        title="Client"
+        layer="over"
+      >
+        <ul className="px-5 pt-1 pb-2">
+          {[undefined, ...clients.filter(c => !c.archived).map(c => c.id)].map(id => {
+            const c = clients.find(x => x.id === id);
+            const active = clientId === id;
+            return (
+              <li key={id ?? 'none'}>
+                <motion.button
+                  type="button"
+                  onClick={() => {
+                    touchedClient.current = true;
+                    setClientId(id);
+                    setPickingClient(false);
+                  }}
+                  whileTap={{ scale: 0.99 }}
+                  transition={snap}
+                  className="flex min-h-[var(--tap)] w-full items-center justify-between gap-3
+                             border-b border-[var(--line)] py-3.5 text-left last:border-b-0"
+                >
+                  {c ? (
+                    <ClientPill hue={c.hue} name={c.name} />
+                  ) : (
+                    <span className="text-[var(--ink-2)]">No client</span>
+                  )}
+                  {active && (
+                    <Icon name="check" size={20} className="text-[var(--hit)]" />
+                  )}
+                </motion.button>
+              </li>
+            );
+          })}
+        </ul>
+      </Sheet>
     </Sheet>
   );
+}
+
+/**
+ * Fun is the default because most of what these two capture is their own work,
+ * not a client's — so the common case should cost no taps. Matched by name
+ * rather than id: the clients are seeded per device, so the ids differ between
+ * Clark's phone and Angie's while the names do not.
+ */
+function defaultClientId(clients: { id: string; name: string; archived?: boolean }[]) {
+  return clients.find(c => !c.archived && c.name.trim().toLowerCase() === 'fun')?.id;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
