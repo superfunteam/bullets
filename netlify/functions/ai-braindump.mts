@@ -17,9 +17,7 @@ const SYSTEM = `You turn a messy brain dump into structured to-do bullets for a 
 
 Horizons, pick exactly one per bullet:
 - "now"   super urgent, today
-- "next"  as soon as we can, this week
-- "soon"  the near future, this month
-- "later" the distant future
+- "next"  this week, but not today
 - "shelf" undecided, not committed to yet
 
 Rules:
@@ -61,7 +59,19 @@ export default async (req: Request) => {
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     const parsed = JSON.parse(cleaned) as { bullets?: unknown[] };
 
-    return json({ bullets: Array.isArray(parsed.bullets) ? parsed.bullets : [] });
+    /**
+     * Clamp the horizon the model chose. It is prompted with three, but a model
+     * will occasionally reach for a fourth, and this endpoint is the one place
+     * a value that never came from a user can enter the system. Anything that
+     * is not a commitment is the Shelf — the same complement the client uses.
+     */
+    const bullets = (Array.isArray(parsed.bullets) ? parsed.bullets : []).map(b => {
+      const row = b as Record<string, unknown>;
+      const h = row.horizon;
+      return { ...row, horizon: h === 'now' || h === 'next' ? h : 'shelf' };
+    });
+
+    return json({ bullets });
   } catch {
     // The app is fully functional with AI off; never surface a failure here.
     return json({ bullets: [] });

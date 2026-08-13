@@ -508,7 +508,7 @@ function HorizonsCard({ active, reduced }: CardProps) {
     <>
       <Head
         eyebrow="When will you do it?"
-        title="Five answers."
+        title="Three answers."
         body="Tap one to see where the bullet turns up."
       />
 
@@ -532,7 +532,7 @@ function HorizonsCard({ active, reduced }: CardProps) {
           ))}
         </div>
 
-        {/* Fixed two lines: SOON's caption wraps and the slab below must not
+        {/* Fixed two lines: the Shelf caption wraps and the slab below must not
             hop a line when you tap across. */}
         <div className="mt-4 flex min-h-[2.9rem] items-start">
           <AnimatePresence mode="wait">
@@ -604,7 +604,7 @@ function WeeklyCard({ active }: CardProps) {
       <Head
         eyebrow="Once a week"
         title="The Weekly Pull."
-        // Not "off the Shelf": the weekly deck also draws SOON, anything
+        // Not "off the Shelf": the weekly deck also draws anything
         // targeted inside three weeks, and anything open that has lost its
         // commitment — the safety net the whole state model rests on.
         body="It brings back everything you haven't committed to yet."
@@ -641,7 +641,7 @@ function WeeklyCard({ active }: CardProps) {
             <div className="relative flex h-full flex-col justify-between px-6 py-5 pl-8">
               <div className="flex items-center gap-2.5">
                 <SelectionMark kind="task" title="Draft the Q4 pitch" />
-                <HorizonChip horizon="soon" size="sm" active />
+                <HorizonChip horizon="shelf" size="sm" active />
               </div>
               <h3 className="display text-[1.5rem] leading-tight text-[var(--ink)]">
                 Draft the Q4 pitch

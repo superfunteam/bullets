@@ -4,9 +4,20 @@ import { clean } from './ops';
 import { surfacesFor, tensionOf } from './selectors';
 import { normalizeHorizon, type Bullet, type Shot } from './types';
 import { today as todayFn } from '../lib/dates';
+import type { Horizon } from './types';
 
 /**
- * 'soon' and 'later' were retired WITHOUT rewriting a single row.
+ * Horizons that are still STORED and still arrive from peers, but are no longer
+ * offered. Nothing was migrated, so these values live in the data forever and
+ * the app has to keep understanding them.
+ */
+const RETIRED = {
+  soon: 'soon' as unknown as Horizon,
+  later: 'later' as unknown as Horizon,
+};
+
+/**
+ * RETIRED.soon and RETIRED.later were retired WITHOUT rewriting a single row.
  *
  * Nothing is migrated, so nothing can be lost by a migration — but that means
  * both values live in the stored data and in the op log forever, and Angie's
@@ -22,7 +33,7 @@ const bullet = (over: Partial<Bullet> = {}): Bullet =>
   ({
     id: 'b1',
     title: 'Site copy',
-    horizon: 'later',
+    horizon: RETIRED.later,
     kind: 'task',
     state: 'open',
     sortKey: 'a0',
@@ -39,8 +50,8 @@ describe('retired horizons still reach the user', () => {
   it('folds anything unrecognised onto the Shelf, not just soon and later', () => {
     expect(normalizeHorizon('now')).toBe('now');
     expect(normalizeHorizon('next')).toBe('next');
-    expect(normalizeHorizon('soon')).toBe('shelf');
-    expect(normalizeHorizon('later')).toBe('shelf');
+    expect(normalizeHorizon(RETIRED.soon)).toBe('shelf');
+    expect(normalizeHorizon(RETIRED.later)).toBe('shelf');
     expect(normalizeHorizon('shelf')).toBe('shelf');
     // The point of a complement: a typo or a value from a future build lands
     // somewhere visible rather than nowhere.
@@ -50,13 +61,13 @@ describe('retired horizons still reach the user', () => {
   });
 
   it('rewrites the horizon on the way out of clean(), so no view ever sees one', () => {
-    const stored = { ...bullet({ horizon: 'soon' as Bullet['horizon'] }), _ts: {}, _op: {} };
+    const stored = { ...bullet({ horizon: RETIRED.soon }), _ts: {}, _op: {} };
     expect(clean<Bullet>(stored as never).horizon).toBe('shelf');
   });
 
   it('gives a stored "later" bullet a Shelf surface', () => {
     const today = todayFn();
-    const surfaces = surfacesFor(bullet({ horizon: 'later' as Bullet['horizon'] }), [], today);
+    const surfaces = surfacesFor(bullet({ horizon: RETIRED.later }), [], today);
     expect(surfaces).toContain('shelf');
   });
 
@@ -65,10 +76,10 @@ describe('retired horizons still reach the user', () => {
     // undefined, `daysLeft < undefined` is false, and the badge silently never
     // appears — the app quietly reassuring you about work that is nearly due.
     const today = '2026-08-12';
-    const soon = bullet({ horizon: 'later' as Bullet['horizon'], deadline: '2026-08-14' });
+    const soon = bullet({ horizon: RETIRED.later, deadline: '2026-08-14' });
     expect(tensionOf(soon, [], today).level).toBe('incoming');
 
-    const late = bullet({ horizon: 'soon' as Bullet['horizon'], deadline: '2026-08-01' });
+    const late = bullet({ horizon: RETIRED.soon, deadline: '2026-08-01' });
     expect(tensionOf(late, [], today).level).toBe('wide');
   });
 
@@ -84,7 +95,7 @@ describe('retired horizons still reach the user', () => {
       createdAt: 1,
       updatedAt: 1,
     } as Shot;
-    const b = bullet({ horizon: 'later' as Bullet['horizon'], deadline: '2026-08-14' });
+    const b = bullet({ horizon: RETIRED.later, deadline: '2026-08-14' });
     expect(tensionOf(b, [shot], today).level).toBe('calm');
   });
 });

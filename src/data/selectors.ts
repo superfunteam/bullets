@@ -12,8 +12,6 @@ export type Tension = { level: TensionLevel; daysLeft?: number };
 const REACH: Record<Horizon, number> = {
   now: 1,
   next: 7,
-  soon: 30,
-  later: Number.MAX_SAFE_INTEGER,
   shelf: Number.MAX_SAFE_INTEGER,
 };
 
@@ -142,7 +140,9 @@ export function surfacesFor(bullet: Bullet, shots: Shot[], today: string): Surfa
   );
   if (inWeek) out.push('week');
 
-  if (bullet.horizon === 'shelf' || bullet.horizon === 'later') out.push('shelf');
+  // A complement, not an allowlist: everything that is not committed to a day
+  // or a week belongs on the Shelf, including values we no longer offer.
+  if (normalizeHorizon(bullet.horizon) === 'shelf') out.push('shelf');
 
   /**
    * The safety net, and the rule that makes invariant 2 hold structurally.

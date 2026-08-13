@@ -403,7 +403,7 @@ export function BulletZoom({
                         void unpull(onToday.id);
                         // Otherwise it still claims NOW with nothing on the
                         // calendar, which is the strand-it-nowhere state again.
-                        void moveToHorizon(bullet.id, 'soon');
+                        void moveToHorizon(bullet.id, 'shelf');
                       }}
                     >
                       Take off today

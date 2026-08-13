@@ -160,7 +160,7 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
   };
 
   /**
-   * Unschedule is moveToHorizon(…, 'soon'), NOT unpull.
+   * Unschedule is moveToHorizon(…, 'shelf'), NOT unpull.
    *
    * A bare unpull deletes the shot and leaves an open bullet sitting on horizon
    * `now` with nothing committed — and rollForwardNow() re-creates a day shot
@@ -175,7 +175,7 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
         .filter(s => s.bulletId === b.id && s.state === 'open')
         .map(s => ({ scope: s.scope, date: s.date, amount: s.amount })),
     }));
-    for (const b of picked.bullets) await moveToHorizon(b.id, 'soon');
+    for (const b of picked.bullets) await moveToHorizon(b.id, 'shelf');
     clear();
     onToast(`Unscheduled ${snapshot.length}`, {
       label: 'UNDO',
@@ -275,7 +275,7 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
                   Unschedule {picked.bullets.length}
                 </BigButton>
                 <p className="meta mt-2 px-1 text-[var(--ink-3)]">
-                  Comes off the days it's on. Goes back to SOON.
+                  Comes off the days it's on. Goes back to the Shelf.
                 </p>
               </div>
             )}

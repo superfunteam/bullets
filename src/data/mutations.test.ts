@@ -30,6 +30,17 @@ import { seedIfEmpty } from './seed';
 import { addDays, today, weekStart } from '../lib/dates';
 import { progressOf } from './selectors';
 import { hasAnswered, responseOf, type Bullet, type Huddle, type Shot } from './types';
+import type { Horizon } from './types';
+
+/**
+ * Horizons that are still STORED and still arrive from peers, but are no longer
+ * offered. Nothing was migrated, so these values live in the data forever and
+ * the app has to keep understanding them.
+ */
+const RETIRED = {
+  soon: 'soon' as unknown as Horizon,
+  later: 'later' as unknown as Horizon,
+};
 
 const bulletOf = async (id: string) =>
   (await db.bullets.get(id)) as unknown as Bullet;
@@ -314,7 +325,7 @@ describe('capturing with a committing horizon', () => {
   });
 
   it('leaves uncommitted horizons off the calendar', async () => {
-    for (const h of ['soon', 'later', 'shelf'] as const) {
+    for (const h of [RETIRED.soon, RETIRED.later, 'shelf'] as const) {
       const id = await createBullet({ title: `A ${h} thing`, horizon: h });
       expect(await shotsOf(id)).toHaveLength(0);
     }
@@ -580,7 +591,7 @@ describe('NOW means today', () => {
   });
 
   it('ignores bullets that are not on NOW', async () => {
-    const id = await createBullet({ title: 'Later thing', horizon: 'later' });
+    const id = await createBullet({ title: 'Later thing', horizon: RETIRED.later });
     expect(await rollForwardNow()).toBe(0);
     expect(await shotsOf(id)).toHaveLength(0);
   });

@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { tensionOf, progressOf, unclaimedOf } from './selectors';
 import type { Bullet, Shot } from './types';
+import type { Horizon } from './types';
+
+/**
+ * Horizons that are still STORED and still arrive from peers, but are no longer
+ * offered. Nothing was migrated, so these values live in the data forever and
+ * the app has to keep understanding them.
+ */
+const RETIRED = {
+  soon: 'soon' as unknown as Horizon,
+  later: 'later' as unknown as Horizon,
+};
 
 const bullet = (over: Partial<Bullet> = {}): Bullet => ({
   id: 'b',
@@ -32,12 +43,12 @@ describe('tensionOf', () => {
   });
 
   it('is calm when a distant target sits on a distant horizon', () => {
-    const b = bullet({ deadline: '2026-12-01', horizon: 'later' });
+    const b = bullet({ deadline: '2026-12-01', horizon: RETIRED.later });
     expect(tensionOf(b, [], '2026-08-12').level).toBe('calm');
   });
 
   it('is incoming when a near target has not been aimed at', () => {
-    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const b = bullet({ deadline: '2026-08-14', horizon: RETIRED.later });
     expect(tensionOf(b, [], '2026-08-12').level).toBe('incoming');
   });
 
@@ -57,7 +68,7 @@ describe('tensionOf', () => {
   });
 
   it('ignores an already-completed shot when deciding whether we aimed', () => {
-    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const b = bullet({ deadline: '2026-08-14', horizon: RETIRED.later });
     expect(tensionOf(b, [shot({ state: 'done' })], '2026-08-12').level).toBe('incoming');
   });
 
@@ -68,7 +79,7 @@ describe('tensionOf', () => {
   });
 
   it('reports how many days are left', () => {
-    const b = bullet({ deadline: '2026-08-15', horizon: 'later' });
+    const b = bullet({ deadline: '2026-08-15', horizon: RETIRED.later });
     expect(tensionOf(b, [], '2026-08-12').daysLeft).toBe(3);
   });
 });
@@ -113,13 +124,13 @@ describe('unclaimedOf', () => {
 describe('abandoned commitments', () => {
   it('does not treat an open shot dated in the past as aim', () => {
     // Committed last Monday, never done. Target is Friday. That is not "aimed".
-    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const b = bullet({ deadline: '2026-08-14', horizon: RETIRED.later });
     const stale = shot({ date: '2026-08-03', scope: 'day' });
     expect(tensionOf(b, [stale], '2026-08-12').level).toBe('incoming');
   });
 
   it('still treats a shot on today as aim', () => {
-    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const b = bullet({ deadline: '2026-08-14', horizon: RETIRED.later });
     expect(tensionOf(b, [shot({ date: '2026-08-12' })], '2026-08-12').level).toBe('calm');
   });
 
@@ -130,7 +141,7 @@ describe('abandoned commitments', () => {
   });
 
   it('does not treat a week that ended before today as aim', () => {
-    const b = bullet({ deadline: '2026-08-14', horizon: 'later' });
+    const b = bullet({ deadline: '2026-08-14', horizon: RETIRED.later });
     const oldWeek = shot({ scope: 'week', date: '2026-07-27' });
     expect(tensionOf(b, [oldWeek], '2026-08-12').level).toBe('incoming');
   });

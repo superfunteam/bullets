@@ -11,25 +11,40 @@ export const personName = (p: Person): string => (p === 'clark' ? 'Clark' : 'Ang
 
 export const otherPerson = (p: Person): Person => (p === 'clark' ? 'angie' : 'clark');
 
-export const HORIZONS = ['now', 'next', 'soon', 'later', 'shelf'] as const;
+export const HORIZONS = ['now', 'next', 'shelf'] as const;
 export type Horizon = (typeof HORIZONS)[number];
 
 export const HORIZON_META: Record<
   Horizon,
-  { label: string; blurb: string; emoji: string; hue: number }
+  { label: string; phrase: string; blurb: string; emoji: string; hue: number }
 > = {
-  // The blurb says where the bullet ENDS UP, not how urgent it is. Priority
-  // words ("super urgent", "as soon as we can") invite arguing about rank;
-  // these five state a consequence you can go and check. SOON's is the one
-  // that has to be said out loud — SOON appears on no list screen, so without
-  // being told you set something to SOON and never see it again until a Pull.
-  now: { label: 'NOW', blurb: 'It gets a card on Today.', emoji: '🔥', hue: 25 },
-  next: { label: 'NEXT', blurb: 'It gets a card in this week.', emoji: '⚡', hue: 70 },
-  soon: { label: 'SOON', blurb: 'Nothing scheduled. The Weekly Pull will ask again.', emoji: '🌤', hue: 220 },
-  later: { label: 'LATER', blurb: 'It sits on the Shelf.', emoji: '🌙', hue: 275 },
-  shelf: { label: 'SHELF', blurb: 'It sits on the Shelf, undecided.', emoji: '📚', hue: 150 },
+  // Three answers to "when will you do it?", and each states the consequence
+  // you can go and check rather than how urgent it is. SOON and LATER are gone:
+  // both meant "not scheduled", which is what the Shelf already means, and SOON
+  // in particular appeared on no list screen — you set it and never saw the
+  // bullet again until a Pull.
+  now: {
+    label: 'TODAY',
+    phrase: 'Today',
+    blurb: 'It gets a card on Today.',
+    emoji: '🔥',
+    hue: 25,
+  },
+  next: {
+    label: 'THIS WEEK',
+    phrase: 'this week',
+    blurb: 'It gets a card in this week, not today.',
+    emoji: '⚡',
+    hue: 70,
+  },
+  shelf: {
+    label: 'THE SHELF',
+    phrase: 'the Shelf',
+    blurb: 'Nothing scheduled. The Weekly Pull will ask again.',
+    emoji: '📚',
+    hue: 150,
+  },
 };
-
 
 /**
  * Fold any stored horizon onto one of the three we offer.

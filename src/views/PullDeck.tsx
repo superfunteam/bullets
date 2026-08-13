@@ -43,12 +43,15 @@ const VELOCITY = 650;
 /** How far ahead a target has to be before the Weekly Pull stops caring. */
 const NEAR_TARGET_DAYS = 21;
 
-/** One step further out. Shelf is the end of the line. */
+/**
+ * Left means "not this week", and THIS WEEK is this week — so there is no
+ * middle rung left to demote to. The old ladder (now→next→soon→later→shelf)
+ * existed only because there were two parking horizons between the week and
+ * the Shelf; both meant "not scheduled", which is what the Shelf means.
+ */
 const PUSHED_OUT: Record<Horizon, Horizon> = {
-  now: 'next',
-  next: 'soon',
-  soon: 'later',
-  later: 'shelf',
+  now: 'shelf',
+  next: 'shelf',
   shelf: 'shelf',
 };
 
@@ -123,7 +126,10 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
         // card would schedule a piece of work on a day of its own.
         if (b.state !== 'open' || b.parentId) continue;
         const near = b.deadline !== undefined && daysUntil(today, b.deadline) <= NEAR_TARGET_DAYS;
-        if (b.horizon === 'soon' || near) pool.set(b.id, b);
+        // The 'soon' clause is gone with the horizon. Anything unscheduled is
+        // on the Shelf now and already in the pool above, so a near target is
+        // the only remaining reason to pull something forward.
+        if (near) pool.set(b.id, b);
       }
       /**
        * Only a LIVE commitment counts as already decided.

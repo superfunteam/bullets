@@ -1,7 +1,7 @@
 {
   "name": "bullets",
   "private": true,
-  "version": "1.3.3",
+  "version": "1.4.0",
   "type": "module",
   "description": "Bullets — No more dodging. A two-person, deadline-first bullet journal for Superfun.",
   "author": "Superfun",

@@ -15,6 +15,16 @@ import { today, weekStart } from '../lib/dates';
 import { HORIZONS, type Bullet, type Horizon, type Shot } from './types';
 
 /**
+ * Horizons that are still STORED and still arrive from peers, but are no longer
+ * offered. Nothing was migrated, so these values live in the data forever and
+ * the app has to keep understanding them.
+ */
+const RETIRED = {
+  soon: 'soon' as unknown as Horizon,
+  later: 'later' as unknown as Horizon,
+};
+
+/**
  * The state model (docs/state-model.md) as an executable check.
  *
  * Invariant 2 — every open, top-level bullet appears somewhere — is the rule
@@ -61,7 +71,7 @@ describe('invariant 1 — a committing horizon always has a matching open shot',
     const id = await createBullet({ title: 'On today', horizon: 'now' });
     const shot = (await shotsOf(id))[0];
     await unpull(shot.id);
-    await moveToHorizon(id, 'soon');
+    await moveToHorizon(id, RETIRED.soon);
 
     const b = await bulletOf(id);
     expect(b.horizon).not.toBe('now');
