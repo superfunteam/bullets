@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { TabBar, type Tab } from './design/TabBar';
 import { Toast } from './design/bits';
+import { RefreshGesture } from './design/RefreshGesture';
 import { settle } from './design/springs';
 import { CaptureSheet } from './views/CaptureSheet';
 import { TodayView } from './views/TodayView';
@@ -234,6 +235,13 @@ export function App() {
           reads as lag on every single tab press — the opposite of how a native
           tab bar behaves. The outgoing view unmounts immediately and the
           incoming one springs in. */}
+      {/* Wraps motion.main ONLY. On the root div a transform would become the
+          containing block for TabBar, Toast and every fixed overlay, and the
+          tab bar would slide down with the pull. */}
+      <RefreshGesture
+        disabled={overlay.kind !== 'none' || capturing || requesting}
+        resetKey={tab}
+      >
       <motion.main
           key={tab}
           initial={{ opacity: 0, y: 8 }}
@@ -264,6 +272,7 @@ export function App() {
             <HuddlesView onOpen={openHuddle} onRequest={() => setRequesting(true)} />
           )}
       </motion.main>
+      </RefreshGesture>
 
       <TabBar
         tab={tab}
