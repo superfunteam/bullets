@@ -4,6 +4,7 @@ import { BigButton, ClientDot, HorizonChip, TensionBadge } from '../design/bits'
 import { Slab } from '../design/Slab';
 import { settle, snap, zoom } from '../design/springs';
 import { useDismissDrag } from '../design/useDismissDrag';
+import { Icon } from '../design/icons';
 import { progressOf, tensionOf, unclaimedOf } from '../data/selectors';
 import { useBullet, useChildren, useClients, useShotsFor } from '../data/store';
 import {
@@ -97,9 +98,10 @@ export function BulletZoom({
             <button
               type="button"
               onClick={onClose}
-              className="meta -ml-2 min-h-11 px-2 text-[var(--ink-2)] uppercase"
+              className="meta -ml-2 flex min-h-11 items-center gap-0.5 px-2 text-[var(--ink-2)] uppercase"
             >
-              ← Zoom out
+              <Icon name="chevron_left" size={18} />
+              Back
             </button>
             <TensionBadge level={tension.level} daysLeft={tension.daysLeft} />
           </div>

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Slab } from '../design/Slab';
 import { BigButton, Empty, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
+import { Icon } from '../design/icons';
 import { byUrgency, tensionOf } from '../data/selectors';
 import { useAllShots, useClients, useShelf } from '../data/store';
 import { shortDate, today as todayFn } from '../lib/dates';
@@ -212,9 +213,9 @@ function ClientDrawer({
               aria-hidden
               animate={{ rotate: open ? 90 : 0 }}
               transition={snap}
-              className="shrink-0 text-[var(--ink-3)]"
+              className="inline-flex shrink-0 text-[var(--ink-3)]"
             >
-              ▸
+              <Icon name="chevron_right" size={18} />
             </motion.span>
             {group.hue !== undefined ? (
               <span

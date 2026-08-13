@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Slab } from '../design/Slab';
 import { ClientDot, KindGlyph, TensionBadge } from '../design/bits';
 import { fling } from '../design/springs';
+import { Icon } from '../design/icons';
 import { completeShot, uncompleteShot } from '../data/mutations';
 import { tensionOf } from '../data/selectors';
 import type { ShotRow } from '../data/store';
@@ -117,10 +118,10 @@ export function ShotCard({
               <motion.span
                 initial={{ scale: 0.5, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="numeral mt-1 text-xl"
+                className="mt-1 inline-flex"
                 style={{ color: 'var(--hit)' }}
               >
-                ✓
+                <Icon name="check" size={22} />
               </motion.span>
             )}
           </div>

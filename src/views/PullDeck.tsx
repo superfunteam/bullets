@@ -10,6 +10,7 @@ import { Slab } from '../design/Slab';
 import { Stepper } from '../design/Stepper';
 import { BigButton, ClientDot, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap } from '../design/springs';
+import { Icon } from '../design/icons';
 import { moveToHorizon, pullToDay, pullToWeek, shelve } from '../data/mutations';
 import { byUrgency, surfacesFor, tensionOf, unclaimedOf, type Tension } from '../data/selectors';
 import {
@@ -753,7 +754,9 @@ function Summary({
         <ul className="mt-6 space-y-2">
           {pulled.map(p => (
             <li key={p.id} className="flex items-baseline gap-3">
-              <span className="text-[var(--hit)]">✓</span>
+              <span className="text-[var(--hit)]">
+                <Icon name="check" size={16} />
+              </span>
               <span className="flex-1 text-[var(--ink)]" style={{ fontVariationSettings: "'wght' 600" }}>
                 {p.title}
               </span>

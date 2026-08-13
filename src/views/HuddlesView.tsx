@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { HuddleStrip } from './HuddleStrip';
 import { BigButton, Empty } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
+import { Icon } from '../design/icons';
 import { useHuddles } from '../data/store';
 import { relativeDay, timeOfDay, toDay, today as todayFn } from '../lib/dates';
 import type { Huddle } from '../data/types';
@@ -108,9 +109,9 @@ export function HuddlesView({
                   aria-hidden
                   animate={{ rotate: showDone ? 90 : 0 }}
                   transition={snap}
-                  className="text-[var(--ink-3)]"
+                  className="inline-flex text-[var(--ink-3)]"
                 >
-                  ›
+                  <Icon name="chevron_right" size={18} />
                 </motion.span>
               </motion.button>
 

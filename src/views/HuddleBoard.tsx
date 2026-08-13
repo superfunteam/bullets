@@ -3,6 +3,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { Slab } from '../design/Slab';
 import { BigButton, ClientDot, KindGlyph } from '../design/bits';
 import { lane as laneSpring, settle, snap } from '../design/springs';
+import { Icon } from '../design/icons';
 import { presence, setPace } from '../sync/client';
 import {
   addHuddleItem,
@@ -301,9 +302,7 @@ function BackButton({ onClose }: { onClose: () => void }) {
       className="meta flex min-h-12 items-center gap-2 rounded-full bg-[var(--surface-2)]
                  px-4 py-2.5 text-[var(--ink-2)]"
     >
-      <span aria-hidden className="text-base">
-        ‹
-      </span>
+      <Icon name="chevron_left" size={18} />
       Huddles
     </motion.button>
   );
@@ -679,8 +678,8 @@ function ItemBody({
             )}
           </div>
           {decidedLane && (
-            <span aria-hidden className="mt-0.5 text-lg" style={{ color: 'var(--hit)' }}>
-              ✓
+            <span className="mt-0.5" style={{ color: 'var(--hit)' }}>
+              <Icon name="check" size={18} />
             </span>
           )}
         </div>

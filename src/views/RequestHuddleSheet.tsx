@@ -4,6 +4,7 @@ import { Sheet } from '../design/Sheet';
 import { BigButton, ClientDot, KindGlyph } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { snap } from '../design/springs';
+import { Icon } from '../design/icons';
 import { addHuddleItem, callHuddle } from '../data/mutations';
 import { useBullets, useClients } from '../data/store';
 import { addDays, fromDay, relativeDay, timeOfDay, toDay, today as todayFn, type Day } from '../lib/dates';
@@ -257,8 +258,8 @@ export function RequestHuddleSheet({
                     >
                       {b.title}
                     </span>
-                    <span aria-hidden className="shrink-0 text-lg text-[var(--ink-3)]">
-                      ×
+                    <span className="shrink-0 text-[var(--ink-3)]">
+                      <Icon name="close" size={18} />
                     </span>
                   </motion.button>
                 );
