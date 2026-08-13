@@ -30,6 +30,25 @@ export const HORIZON_META: Record<
   shelf: { label: 'SHELF', blurb: 'It sits on the Shelf, undecided.', emoji: '📚', hue: 150 },
 };
 
+
+/**
+ * Fold any stored horizon onto one of the three we offer.
+ *
+ * 'soon' and 'later' were retired without rewriting a single row. They still
+ * arrive from the op log, and Angie's phone can keep writing them until her APK
+ * updates — offline, at a higher HLC stamp, winning last-write-wins. Nothing is
+ * migrated, so nothing can be lost by a migration.
+ *
+ * This is a COMPLEMENT, not a lookup table: anything that is not 'now' or
+ * 'next' is the Shelf. Turn it into a map and the next unrecognised value — a
+ * typo, a value from a future build — silently gets no Shelf surface, which is
+ * the invisible-bullet trap that has already shipped twice. The default arm
+ * must always be 'shelf'.
+ */
+export function normalizeHorizon(raw: unknown): Horizon {
+  return raw === 'now' || raw === 'next' ? raw : 'shelf';
+}
+
 export type EntityKind = 'client' | 'bullet' | 'shot' | 'huddle' | 'huddleItem';
 
 export type Entity = {

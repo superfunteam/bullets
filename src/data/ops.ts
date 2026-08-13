@@ -1,4 +1,5 @@
-import type { AnyEntity, EntityKind, Person } from './types';
+import type { AnyEntity, EntityKind, Horizon, Person } from './types';
+import { normalizeHorizon } from './types';
 
 /**
  * Every mutation in Bullets is one or more field-level ops appended to a log.
@@ -78,6 +79,14 @@ export function applyOp(rec: Materialized | undefined, op: Op): Materialized {
 /** Strip sync bookkeeping before handing an entity to the UI. */
 export function clean<T extends AnyEntity>(rec: Materialized): T {
   const { _ts: _ignoredTs, _op: _ignoredOp, _by: _ignoredBy, ...rest } = rec;
+  // Every bullet a view sees passes through here, so this is where a retired
+  // horizon stops existing. HorizonChip dereferences HORIZON_META[horizon]
+  // unguarded; one surviving 'later' row would throw.
+  if ('horizon' in rest) {
+    (rest as { horizon: Horizon }).horizon = normalizeHorizon(
+      (rest as { horizon: unknown }).horizon,
+    );
+  }
   return rest as unknown as T;
 }
 

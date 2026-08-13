@@ -4,6 +4,7 @@ import { db } from './db';
 import { clean, stampOf, type FieldStamp, type Materialized } from './ops';
 import { weekStart } from '../lib/dates';
 import type { Bullet, Client, Huddle, HuddleItem, Shot } from './types';
+import { normalizeHorizon } from './types';
 
 const alive = <T extends { deletedAt?: number }>(rows: T[]) => rows.filter(r => !r.deletedAt);
 
@@ -153,7 +154,10 @@ export function useShelf(): Bullet[] {
     useLiveQuery(async () => {
       const all = cleanAll<Bullet>(await db.bullets.toArray());
       return all.filter(
-        b => b.state === 'open' && !b.parentId && (b.horizon === 'shelf' || b.horizon === 'later'),
+        // A complement, via the normalizer, not an allowlist. An allowlist here is
+    // how a retired value gets no Shelf surface and no deck route at once —
+    // invisible on the only tab that would have caught it.
+    b => b.state === 'open' && !b.parentId && normalizeHorizon(b.horizon) === 'shelf',
       );
     }, [], []) ?? []
   );

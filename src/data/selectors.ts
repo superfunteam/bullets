@@ -1,5 +1,6 @@
 import { daysUntil, weekStart } from '../lib/dates';
 import type { Bullet, Horizon, Shot } from './types';
+import { normalizeHorizon } from './types';
 
 export type TensionLevel = 'calm' | 'incoming' | 'wide';
 export type Tension = { level: TensionLevel; daysLeft?: number };
@@ -52,7 +53,11 @@ export function tensionOf(bullet: Bullet, shots: Shot[], today: string): Tension
   });
   if (aimed) return { level: 'calm', daysLeft };
 
-  if (daysLeft <= INCOMING_WINDOW && daysLeft < REACH[bullet.horizon]) {
+    // Through the normalizer, not raw: a retired value would give
+  // REACH[x] === undefined, `daysLeft < undefined` is false, and the tension
+  // badge would be silently suppressed — the app telling exactly the lie
+  // tensionOf exists to refuse, with no error anywhere.
+  if (daysLeft <= INCOMING_WINDOW && daysLeft < REACH[normalizeHorizon(bullet.horizon)]) {
     return { level: 'incoming', daysLeft };
   }
   return { level: 'calm', daysLeft };
