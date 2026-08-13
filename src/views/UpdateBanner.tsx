@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Slab } from '../design/Slab';
 import { BigButton } from '../design/bits';
 import { settle } from '../design/springs';
+import { App as CapacitorApp } from '@capacitor/app';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { checkForUpdate, downloadUpdate, skipVersion, type UpdateInfo } from '../native/update';
 
 /**
@@ -14,13 +16,49 @@ export function UpdateBanner() {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * Check on mount AND on every resume.
+   *
+   * Android resumes the WebView rather than remounting React, so a mount-only
+   * effect fires once per cold start and then never again — you could leave the
+   * app open for a week and it would never notice a release. That, plus the old
+   * six-hour throttle, is why a new build never announced itself.
+   *
+   * Only a positive result is written to state: a throttled check returns null,
+   * and treating that as "no update" would tear down a banner already on screen.
+   */
   useEffect(() => {
     let cancelled = false;
-    void checkForUpdate().then(found => {
-      if (!cancelled) setInfo(found);
-    });
+    const run = () =>
+      void checkForUpdate().then(found => {
+        if (!cancelled && found) setInfo(found);
+      });
+
+    run();
+
+    const onVisible = () => {
+      if (!document.hidden) run();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    // The Capacitor event is the reliable one on Android; visibilitychange is
+    // the fallback that also covers the web app and the Electron window.
+    let handle: PluginListenerHandle | undefined;
+    void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) run();
+    })
+      .then(h => {
+        if (cancelled) void h.remove();
+        else handle = h;
+      })
+      .catch(() => {
+        /* plugin absent on web — visibilitychange already covers it */
+      });
+
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      void handle?.remove();
     };
   }, []);
 

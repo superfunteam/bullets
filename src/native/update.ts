@@ -21,7 +21,19 @@ declare const __APP_VERSION__: string;
 
 const SKIP_KEY = 'bullets.skipVersion';
 const LAST_CHECK_KEY = 'bullets.lastUpdateCheck';
-const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+/**
+ * Twenty minutes, not six hours.
+ *
+ * Six hours was written for an app that ships occasionally. This one ships
+ * several times a day to two people, and the throttle is stamped even when the
+ * check finds nothing — so the usual sequence was: Clark opens the app, we
+ * publish a release two minutes later, and his phone refuses to look again
+ * until the evening. He reported exactly that.
+ *
+ * The cost of asking is one unauthenticated GitHub API call, which is rate
+ * limited at 60/hour per IP. At worst this uses three of them.
+ */
+const CHECK_EVERY_MS = 20 * 60 * 1000;
 
 export type UpdateInfo = {
   version: string;

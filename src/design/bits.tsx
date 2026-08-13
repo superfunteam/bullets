@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useRef } from 'react';
 import { HORIZON_META, KIND_GLYPH, type BulletKind, type Horizon } from '../data/types';
 import { settle, snap } from './springs';
 
@@ -111,39 +112,83 @@ export function TensionBadge({
 }
 
 /** Undo affordance. Its existence is what lets completion skip confirmation. */
+/** How long a toast stays up before it clears itself. */
+const TOAST_MS = 3200;
+
 export function Toast({
   message,
   actionLabel,
   onAction,
+  onDismiss,
+  duration = TOAST_MS,
 }: {
   message: string | null;
   actionLabel?: string;
   onAction?: () => void;
+  /** Called when the toast times out or is tapped away. */
+  onDismiss?: () => void;
+  duration?: number;
 }) {
+  /**
+   * The callback lives in a ref so the timer depends only on the message.
+   * An inline arrow from the caller is a new function every render, and using
+   * it as an effect dependency restarts the countdown on every unrelated
+   * re-render — which, in an app that re-renders on every sync tick, means the
+   * toast never times out at all.
+   */
+  const dismiss = useRef(onDismiss);
+  dismiss.current = onDismiss;
+
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => dismiss.current?.(), duration);
+    return () => clearTimeout(t);
+  }, [message, duration]);
+
   return (
     <AnimatePresence>
       {message && (
         <motion.div
-          className="pointer-events-auto fixed inset-x-4 z-[60] flex items-center
-                     justify-between gap-4 rounded-[var(--r-md)] bg-[var(--ink)]
+          // Keyed on the message so a second toast restarts the countdown
+          // instead of inheriting whatever was left of the first one's.
+          key={message}
+          className="pointer-events-auto fixed inset-x-4 z-[60] flex cursor-pointer items-center
+                     justify-between gap-4 overflow-hidden rounded-[var(--r-md)] bg-[var(--ink)]
                      px-5 py-4 text-[var(--bg)] shadow-[var(--shadow-3)]"
           style={{ bottom: 'calc(var(--inset-bottom) + 6.5rem)' }}
           initial={{ y: 20, opacity: 0, scale: 0.97 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: 20, opacity: 0, scale: 0.97 }}
           transition={settle}
+          onClick={() => onDismiss?.()}
         >
           <span style={{ fontVariationSettings: "'wght' 550" }}>{message}</span>
           {actionLabel && (
             <button
               type="button"
-              onClick={onAction}
+              onClick={e => {
+                // Without this the toast's own tap-to-dismiss fires too, and
+                // the action runs against an already-closing toast.
+                e.stopPropagation();
+                onAction?.();
+              }}
               className="meta shrink-0 uppercase"
               style={{ fontVariationSettings: "'wght' 800" }}
             >
               {actionLabel}
             </button>
           )}
+
+          {/* The countdown. Deliberately a depleting bar rather than a number:
+              it says "this is leaving on its own" without asking to be read.
+              scaleX on its own layer, so it never triggers layout. */}
+          <motion.span
+            aria-hidden
+            className="absolute bottom-0 left-0 h-[3px] w-full origin-left bg-[var(--bg)]/45"
+            initial={{ scaleX: 1 }}
+            animate={{ scaleX: 0 }}
+            transition={{ duration: duration / 1000, ease: 'linear' }}
+          />
         </motion.div>
       )}
     </AnimatePresence>

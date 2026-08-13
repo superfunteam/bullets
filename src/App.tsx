@@ -256,11 +256,20 @@ export function App() {
         )}
       </AnimatePresence>
 
+      {/* No "OK" action. A toast that has to be acknowledged is a dialog
+          wearing a toast's clothes — and since dismissing was the only code
+          path that cleared it, one left unacknowledged sat there permanently.
+          It times itself out now; "Show" survives because going to the Shelf
+          is a real thing you might want, not an acknowledgement. */}
       <Toast
         message={toast}
-        actionLabel={toastAction === 'shelf' ? 'Show' : 'OK'}
+        actionLabel={toastAction === 'shelf' ? 'Show' : undefined}
         onAction={() => {
-          if (toastAction === 'shelf') setTab('shelf');
+          setTab('shelf');
+          setToast(null);
+          setToastAction(null);
+        }}
+        onDismiss={() => {
           setToast(null);
           setToastAction(null);
         }}

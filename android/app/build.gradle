@@ -50,6 +50,13 @@ android {
                 storePassword ksStorePass
                 keyAlias      ksKeyAlias
                 keyPassword   ksKeyPass
+                // Pinned rather than left to whatever the AGP default is that
+                // week: the shipped v1.2.3 APK came out v2-only. v1 is dead
+                // weight above minSdk 24; v3 is what allows the signing key to
+                // be rotated later without every install breaking.
+                enableV1Signing false
+                enableV2Signing true
+                enableV3Signing true
             }
         }
     }
