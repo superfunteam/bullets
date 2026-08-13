@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'motion/react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { settle } from './springs';
 import { useDismissDrag } from './useDismissDrag';
 
@@ -20,11 +20,20 @@ export function Sheet({
   onClose,
   children,
   title,
+  showScrim = true,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   title?: string;
+  /**
+   * Set false for a sheet you keep working behind — the bulk sheet, where you
+   * carry on ticking rows while it stands. The scrim is a `fixed inset-0` layer
+   * with onClick={onClose}, so leaving it in makes ticking a second row
+   * physically impossible. Dropping it also drops aria-modal and the body
+   * scroll lock, because none of those are true of a non-modal sheet.
+   */
+  showScrim?: boolean;
 }) {
   const y = useMotionValue(0);
   // The backdrop lightens as the sheet is pulled down, so the gesture feels
@@ -33,14 +42,15 @@ export function Sheet({
   const { controls, scrollRef, handleProps, contentProps } = useDismissDrag();
 
   // Without this the page behind scrolls under the sheet on both platforms.
+  // A non-modal sheet must NOT do it — you still need to scroll the list.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !showScrim) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [open]);
+  }, [open, showScrim]);
 
   // Escape is free on desktop and people expect it.
   useEffect(() => {
@@ -54,23 +64,52 @@ export function Sheet({
     if (open) y.set(0);
   }, [open, y]);
 
+  /**
+   * Publish the panel height so the page can get out from under it.
+   *
+   * A non-modal sheet covers the bottom of a list you are still using — without
+   * this the last few rows sit behind it, which is exactly when you are trying
+   * to tick them. The toast reads the same variable so it never lands on the
+   * sheet either.
+   */
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = panelRef.current;
+    const root = document.documentElement;
+    if (!open || !el) {
+      root.style.removeProperty('--bulk-sheet-h');
+      return;
+    }
+    const publish = () => root.style.setProperty('--bulk-sheet-h', `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--bulk-sheet-h');
+    };
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && (
         <>
-          <motion.div
-            className="fixed inset-0 z-40 bg-black"
-            style={{ opacity: scrim }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.45 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            onClick={onClose}
-          />
+          {showScrim && (
+            <motion.div
+              className="fixed inset-0 z-40 bg-black"
+              style={{ opacity: scrim }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.45 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={onClose}
+            />
+          )}
 
           <motion.div
+            ref={panelRef}
             role="dialog"
-            aria-modal="true"
+            aria-modal={showScrim ? 'true' : undefined}
             aria-label={title}
             className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col
                        rounded-t-[var(--r-xl)] border-t border-[var(--line)]

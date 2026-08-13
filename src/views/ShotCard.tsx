@@ -1,8 +1,8 @@
 import { motion, useMotionValue, useTransform, useMotionValueEvent } from 'motion/react';
 import { useState } from 'react';
 import { Slab } from '../design/Slab';
-import { ClientDot, KindGlyph, TensionBadge } from '../design/bits';
-import { fling } from '../design/springs';
+import { ClientPill, SelectionMark, TensionBadge } from '../design/bits';
+import { fling, zoom } from '../design/springs';
 import { Icon } from '../design/icons';
 import { completeShot, uncompleteShot } from '../data/mutations';
 import { tensionOf } from '../data/selectors';
@@ -23,12 +23,17 @@ export function ShotCard({
   onHit,
   index = 0,
   zoomId,
+  selected,
+  onToggle,
 }: {
   row: ShotRow;
   today: string;
   onZoom?: (bulletId: string) => void;
   onHit?: (shotId: string) => void;
   index?: number;
+  selected?: boolean;
+  /** Omitted on Done rows, which are status rather than a control. */
+  onToggle?: () => void;
   /**
    * The shared element this card claims, so it can physically become the zoom.
    * Defaults to the bullet's global id, which is what BulletZoom grows out of.
@@ -68,7 +73,13 @@ export function ShotCard({
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ ...fling, delay: Math.min(index * 0.035, 0.25) }}
+      // `layout` must be given its own transition. Motion resolves a layout
+      // animation from props.transition when there is no `.layout` sub-key, so
+      // without this the entrance delay ALSO delays every reorder and the
+      // card→zoom handoff by up to 250ms. ShelfView already documents this
+      // exact trap; three sites missed it. zoom, not snap: springs.ts notes the
+      // shared-element handoff reads as a glitch when it is too fast.
+      transition={{ ...fling, delay: Math.min(index * 0.035, 0.25), layout: zoom }}
       drag={done ? false : 'x'}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={{ left: 0.02, right: 0.7 }}
@@ -83,7 +94,6 @@ export function ShotCard({
       className="touch-pan-y"
     >
       <Slab
-        hue={client?.hue}
         tone={done ? 'quiet' : 'default'}
         onClick={() => (done ? void uncompleteShot(shot.id) : onZoom?.(bullet.id))}
       >
@@ -98,14 +108,22 @@ export function ShotCard({
           }}
         />
 
-        <motion.div className="relative px-6 py-7 pl-8" style={{ x: titleShift }}>
-          <div className="flex items-start gap-3">
-            {/* Aligned to the first line's optical centre, not its box. */}
-            <span className="mt-[0.55rem]">
-              <KindGlyph kind={bullet.kind} />
-            </span>
+        {/* One grid, one text origin. The old pl-8 was applied twice with two
+            different numbers and drifted 4px against the glyph. */}
+        <motion.div
+          className="relative grid grid-cols-[auto_1fr] gap-x-3.5 px-5 py-6"
+          style={{ x: titleShift }}
+        >
+          <SelectionMark
+            kind={bullet.kind}
+            selected={selected}
+            done={done}
+            title={bullet.title}
+            onToggle={onToggle}
+          />
+          <div className="min-w-0 pr-8">
             <h3
-              className="display flex-1 text-[1.6rem] text-[var(--ink)]"
+              className="display text-[1.6rem] leading-[1.15] text-balance text-[var(--ink)]"
               style={
                 done
                   ? { color: 'var(--ink-3)', textDecoration: 'line-through' }
@@ -114,20 +132,9 @@ export function ShotCard({
             >
               {bullet.title}
             </h3>
-            {armed && !done && (
-              <motion.span
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="mt-1 inline-flex"
-                style={{ color: 'var(--hit)' }}
-              >
-                <Icon name="check" size={22} />
-              </motion.span>
-            )}
-          </div>
 
-          <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 pl-8">
-            {client && <ClientDot hue={client.hue} name={client.name} />}
+          <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2">
+            {client && <ClientPill hue={client.hue} name={client.name} />}
             {partial && (
               <span className="meta text-[var(--ink-2)]">
                 <span className="numeral">{shot.amount}</span> of {bullet.count!.total}{' '}
@@ -136,6 +143,20 @@ export function ShotCard({
             )}
             <TensionBadge level={tension.level} daysLeft={tension.daysLeft} />
           </div>
+          </div>
+
+          {/* Absolute, in a gutter the content reserves with pr-8. Inline, it
+              reflowed the title at 75% of every drag. */}
+          {armed && !done && (
+            <motion.span
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="absolute right-5 inline-flex"
+              style={{ color: 'var(--hit)', top: 'calc(1.5rem + var(--mark-offset))' }}
+            >
+              <Icon name="check" size={22} />
+            </motion.span>
+          )}
         </motion.div>
       </Slab>
     </motion.div>

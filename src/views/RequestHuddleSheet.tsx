@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Sheet } from '../design/Sheet';
-import { BigButton, ClientDot, KindGlyph } from '../design/bits';
+import { BigButton, ClientPill, KindGlyph } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { snap } from '../design/springs';
 import { Icon } from '../design/icons';
@@ -306,7 +306,7 @@ export function RequestHuddleSheet({
                     </span>
                     {client && (
                       <span className="mt-0.5 block">
-                        <ClientDot hue={client.hue} name={client.name} />
+                        <ClientPill hue={client.hue} name={client.name} />
                       </span>
                     )}
                   </span>

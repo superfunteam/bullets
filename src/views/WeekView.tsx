@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { ShotCard } from './ShotCard';
+import { useSelection } from './selection';
 import { HuddleStrip } from './HuddleStrip';
 import { Slab } from '../design/Slab';
-import { ClientDot, KindGlyph, TensionBadge } from '../design/bits';
+import { ClientPill, SelectionMark, TensionBadge } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
 import { useDayShotsInRange, useHuddles, useWeekShots, type ShotRow } from '../data/store';
 import { tensionOf, unclaimedOf } from '../data/selectors';
@@ -143,7 +144,7 @@ export function WeekView({
 
   return (
     <div
-      className={`mx-auto w-full px-4 pb-40 ${grid ? 'max-w-2xl md:max-w-[104rem]' : 'max-w-2xl'}`}
+      className={`mx-auto w-full px-4 pb-[calc(10rem+var(--bulk-sheet-h,0px))] ${grid ? 'max-w-2xl md:max-w-[104rem]' : 'max-w-2xl'}`}
     >
       <header className="flex items-end justify-between gap-4 px-2 pt-6 pb-5">
         <div>
@@ -242,6 +243,7 @@ function DayBlock({
     [rows],
   );
 
+  const sel = useSelection();
   return (
     <motion.section
       initial={{ opacity: 0, y: 10 }}
@@ -291,6 +293,8 @@ function DayBlock({
                 onZoom={onZoom}
                 index={i}
                 zoomId={sharedZoomShots.has(row.shot.id) ? undefined : `shot-${row.shot.id}`}
+                selected={sel.has(row.shot.id)}
+                onToggle={() => sel.toggle('week', row.shot.id)}
               />
             ))}
           </AnimatePresence>
@@ -315,6 +319,7 @@ function PoolRow({
   index: number;
   onZoom: (id: string) => void;
 }) {
+  const sel = useSelection();
   const { bullet, client, shot } = row;
   const tension = tensionOf(bullet, [shot], today);
 
@@ -324,26 +329,33 @@ function PoolRow({
       animate={{ opacity: 1, y: 0 }}
       transition={{ ...settle, delay: stagger(index) }}
     >
-      <Slab hue={client?.hue} tone="sunken" onClick={() => onZoom(bullet.id)}>
-        <div className="flex min-h-[var(--tap)] items-center gap-3 px-5 py-4 pl-7">
-          <span className="text-lg">
-            <KindGlyph kind={bullet.kind} />
-          </span>
-          <p className="display min-w-0 flex-1 truncate text-lg text-[var(--ink)]">
-            {bullet.title}
-          </p>
-          {outstanding !== undefined && bullet.count && (
-            <span className="meta shrink-0 text-[var(--ink-2)]">
-              <span className="numeral">{outstanding}</span> of{' '}
-              <span className="numeral">{bullet.count.total}</span> {bullet.count.unit} left
-            </span>
-          )}
-          {client && (
-            <span className="hidden shrink-0 sm:inline-flex">
-              <ClientDot hue={client.hue} name={client.name} />
-            </span>
-          )}
-          <TensionBadge level={tension.level} daysLeft={tension.daysLeft} />
+      <Slab tone="sunken" onClick={() => onZoom(bullet.id)}>
+        <div className="grid min-h-[var(--tap)] grid-cols-[auto_1fr] gap-x-3.5 px-5 py-4">
+          <SelectionMark
+            kind={bullet.kind}
+            selected={sel.has(shot.id)}
+            title={bullet.title}
+            onToggle={() => sel.toggle('week', shot.id)}
+          />
+          <div className="min-w-0">
+            {/* Never truncates. A clipped title is half the reason this list
+                read as ugly, and it clips hardest at Angie's font size. */}
+            <p className="display text-lg leading-[1.2] text-balance text-[var(--ink)]">
+              {bullet.title}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-2">
+              {/* Unconditional. On a phone the spine used to be this row's only
+                  client cue, and the spine is gone. */}
+              {client && <ClientPill hue={client.hue} name={client.name} />}
+              {outstanding !== undefined && bullet.count && (
+                <span className="meta text-[var(--ink-2)]">
+                  <span className="numeral">{outstanding}</span> of{' '}
+                  <span className="numeral">{bullet.count.total}</span> {bullet.count.unit} left
+                </span>
+              )}
+              <TensionBadge level={tension.level} daysLeft={tension.daysLeft} />
+            </div>
+          </div>
         </div>
       </Slab>
     </motion.div>

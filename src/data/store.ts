@@ -1,4 +1,5 @@
-import { useLiveQuery } from 'dexie-react-hooks';
+import { liveQuery, type Observable } from 'dexie';
+import { useLiveQuery, useObservable } from 'dexie-react-hooks';
 import { db } from './db';
 import { clean, stampOf, type FieldStamp, type Materialized } from './ops';
 import { weekStart } from '../lib/dates';
@@ -8,6 +9,65 @@ const alive = <T extends { deletedAt?: number }>(rows: T[]) => rows.filter(r => 
 
 const cleanAll = <T extends { deletedAt?: number }>(rows: Materialized[]) =>
   alive(rows).map(r => clean<never>(r)) as unknown as T[];
+
+
+/**
+ * Live queries that survive their own component.
+ *
+ * Every list view unmounts on a tab change, and `liveQuery` schedules its first
+ * read with `setTimeout(doQuery, 0)` (dexie.mjs) — so a freshly mounted view
+ * always renders the empty default first and the real rows a tick later. On
+ * Today that meant the *empty state* painted on every single tab press:
+ * "Nothing on today, and nothing in the week" for a frame, then a hard pop as
+ * the content arrived un-animated. That pop is what read as jank; on the phone,
+ * where an IndexedDB round-trip is far slower than on a laptop, it is several
+ * frames long.
+ *
+ * `liveQuery` keeps `hasValue`/`currentValue` in its OUTER closure and hangs
+ * `hasValue()`/`getValue()` off the observable, and the Observable is cold — so
+ * holding the instance past unsubscribe is safe, and re-subscribing re-runs the
+ * querier cleanly. `useObservable` probes those synchronously during render, so
+ * the incoming tab paints populated on its first frame.
+ *
+ * The key MUST contain every dependency the querier closes over, or you serve
+ * one day's rows for another. Bounded LRU, because date-keyed entries otherwise
+ * accumulate forever across midnight.
+ */
+const OBSERVABLES = new Map<string, Observable<unknown>>();
+const MAX_CACHED = 64;
+
+function cachedQuery<T>(key: string, querier: () => Promise<T>): Observable<T> {
+  const hit = OBSERVABLES.get(key);
+  if (hit) {
+    // Re-insert so the LRU eviction below drops genuinely cold keys.
+    OBSERVABLES.delete(key);
+    OBSERVABLES.set(key, hit);
+    return hit as Observable<T>;
+  }
+  const made = liveQuery(querier);
+  OBSERVABLES.set(key, made as Observable<unknown>);
+  if (OBSERVABLES.size > MAX_CACHED) {
+    const oldest = OBSERVABLES.keys().next().value;
+    if (oldest !== undefined) OBSERVABLES.delete(oldest);
+  }
+  return made;
+}
+
+/** Drop the cache. Tests only — a stale observable across tests is a lie. */
+export function __resetQueryCache(): void {
+  OBSERVABLES.clear();
+}
+
+function useCached<T>(key: string, querier: () => Promise<T>, fallback: T): T {
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- key IS the dep set
+  return useObservable(() => cachedQuery(key, querier), [key]) ?? fallback;
+}
+
+/** Frozen identities: a fresh [] as a fallback re-runs every downstream memo. */
+const EMPTY_ROWS: ShotRow[] = [];
+const EMPTY_CLIENTS: Client[] = [];
+const EMPTY_BULLETS: Bullet[] = [];
+const EMPTY_RANGE: Record<string, ShotRow[]> = {};
 
 export type ShotRow = { shot: Shot; bullet: Bullet; client?: Client };
 
@@ -43,52 +103,48 @@ async function joinShots(rows: Materialized[]): Promise<ShotRow[]> {
 
 /** Today's shots, with their bullet and client already joined. */
 export function useShotsOn(date: string): ShotRow[] {
-  return (
-    useLiveQuery(
-      async () => joinShots(await db.shots.where('[scope+date]').equals(['day', date]).toArray()),
-      [date],
-      [],
-    ) ?? []
+  return useCached(
+    `day:${date}`,
+    async () => joinShots(await db.shots.where('[scope+date]').equals(['day', date]).toArray()),
+    EMPTY_ROWS,
   );
 }
 
 /** What we committed to this week, from the Weekly Pull. */
 export function useWeekShots(day: string): ShotRow[] {
   const start = weekStart(day);
-  return (
-    useLiveQuery(
-      async () => joinShots(await db.shots.where('[scope+date]').equals(['week', start]).toArray()),
-      [start],
-      [],
-    ) ?? []
+  return useCached(
+    `week:${start}`,
+    async () => joinShots(await db.shots.where('[scope+date]').equals(['week', start]).toArray()),
+    EMPTY_ROWS,
   );
 }
 
 export function useDayShotsInRange(days: string[]): Record<string, ShotRow[]> {
   const key = days.join(',');
-  return (
-    useLiveQuery(
-      async () => {
-        const out: Record<string, ShotRow[]> = {};
-        for (const d of days) {
-          out[d] = await joinShots(
-            await db.shots.where('[scope+date]').equals(['day', d]).toArray(),
-          );
-        }
-        return out;
-      },
-      [key],
-      {},
-    ) ?? {}
+  return useCached(
+    `days:${key}`,
+    async () => {
+      // Parallel. These seven have no dependency on each other, and the await
+      // inside the old for-loop made each one its own transaction and its own
+      // main-thread task hop.
+      const pairs = await Promise.all(
+        days.map(async d => [d, await joinShots(
+          await db.shots.where('[scope+date]').equals(['day', d]).toArray(),
+        )] as const),
+      );
+      return Object.fromEntries(pairs) as Record<string, ShotRow[]>;
+    },
+    EMPTY_RANGE,
   );
 }
 
 export function useClients(): Client[] {
-  return useLiveQuery(async () => cleanAll<Client>(await db.clients.toArray()), [], []) ?? [];
+  return useCached('clients', async () => cleanAll<Client>(await db.clients.toArray()), EMPTY_CLIENTS);
 }
 
 export function useBullets(): Bullet[] {
-  return useLiveQuery(async () => cleanAll<Bullet>(await db.bullets.toArray()), [], []) ?? [];
+  return useCached('bullets', async () => cleanAll<Bullet>(await db.bullets.toArray()), EMPTY_BULLETS);
 }
 
 /** The undecided pile you shop from during the Weekly Pull. */

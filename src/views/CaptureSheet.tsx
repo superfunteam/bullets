@@ -116,7 +116,6 @@ export function CaptureSheet({
                   <Pill
                     key={c.id}
                     active={clientId === c.id}
-                    hue={c.hue}
                     onClick={() => setClientId(c.id)}
                   >
                     {c.name}

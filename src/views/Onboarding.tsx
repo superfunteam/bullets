@@ -10,7 +10,14 @@ import {
 } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Slab } from '../design/Slab';
-import { BigButton, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
+import {
+  BigButton,
+  ClientPill,
+  HorizonChip,
+  KindGlyph,
+  SelectionMark,
+  TensionBadge,
+} from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap, stagger } from '../design/springs';
 import { HORIZONS, HORIZON_META, type Horizon } from '../data/types';
 import { Logo } from '../design/Logo';
@@ -41,7 +48,12 @@ const SWIPE_RATIO = 0.24;
 const SWIPE_MAX = 96;
 const SWIPE_VELOCITY = 480;
 
-/** A client hue, shown the only way a client hue is ever shown: as a spine. */
+/**
+ * Client hues for the demo cards. These used to feed the Slab spine; the spine
+ * is gone and ClientPill carries client identity now, so the tutorial shows the
+ * control the app actually has. A tutorial teaching a control that no longer
+ * exists is worse than no tutorial.
+ */
 const HUE_HALCYON = 250;
 const HUE_SUPERFUN = 25;
 
@@ -438,10 +450,10 @@ function ExampleSlab({
   badgeTransition?: Transition;
 }) {
   return (
-    <Slab hue={HUE_HALCYON} tone="raised">
+    <Slab tone="raised">
       <div className="px-6 py-6 pl-8">
         <div className="flex h-7 items-center gap-2.5">
-          <KindGlyph kind="task" />
+          <SelectionMark kind="task" title={DEMO_TITLE} />
           {horizon && <HorizonChip horizon={horizon} size="sm" active />}
           <AnimatePresence mode="popLayout">
             {badge && (
@@ -459,7 +471,10 @@ function ExampleSlab({
         </div>
 
         <h3 className="display mt-3 text-[1.4rem] leading-tight text-[var(--ink)]">{DEMO_TITLE}</h3>
-        <p className="meta mt-2 text-[var(--ink-2)]">Target · {DEMO_TARGET}</p>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-2">
+          <ClientPill hue={HUE_HALCYON} name="Halcyon" />
+          <span className="meta text-[var(--ink-2)]">Target · {DEMO_TARGET}</span>
+        </div>
       </div>
     </Slab>
   );
@@ -606,7 +621,7 @@ function WeeklyCard({ active }: CardProps) {
           dragElastic={{ left: 1, right: 1, top: 1, bottom: 0.18 }}
           dragTransition={{ bounceStiffness: 340, bounceDamping: 32 }}
         >
-          <Slab hue={HUE_SUPERFUN} tone="raised" className="h-full">
+          <Slab tone="raised" className="h-full">
             <motion.span
               aria-hidden
               className="absolute inset-0"
@@ -625,13 +640,13 @@ function WeeklyCard({ active }: CardProps) {
 
             <div className="relative flex h-full flex-col justify-between px-6 py-5 pl-8">
               <div className="flex items-center gap-2.5">
-                <KindGlyph kind="task" />
+                <SelectionMark kind="task" title="Draft the Q4 pitch" />
                 <HorizonChip horizon="soon" size="sm" active />
               </div>
               <h3 className="display text-[1.5rem] leading-tight text-[var(--ink)]">
                 Draft the Q4 pitch
               </h3>
-              <p className="meta text-[var(--ink-2)]">Target · Thu</p>
+              <ClientPill hue={HUE_SUPERFUN} name="Superfun" />
             </div>
 
             <MiniStamp
@@ -713,10 +728,10 @@ function DailyCard({ active, reduced }: CardProps) {
       />
 
       <div className="mt-7">
-        <Slab hue={HUE_SUPERFUN} tone="raised">
+        <Slab tone="raised">
           <div className="flex h-[122px] flex-col justify-between px-6 py-5 pl-8">
             <div className="flex items-center gap-2.5">
-              <KindGlyph kind="task" />
+              <SelectionMark kind="task" title="Draft the Q4 pitch" />
               <HorizonChip horizon="next" size="sm" active />
             </div>
             <h3 className="display text-[1.5rem] leading-tight text-[var(--ink)]">
@@ -811,14 +826,14 @@ function FinishCard({ active, reduced }: CardProps) {
               exit={{ opacity: 0 }}
               transition={reduced ? { duration: 0.01 } : settle}
             >
-              <Slab hue={HUE_SUPERFUN} tone="raised">
+              <Slab tone="raised">
                 <motion.span
                   aria-hidden
                   className="absolute inset-0 origin-left"
                   style={{ scaleX: flood, opacity: floodOpacity, background: 'var(--hit-soft)' }}
                 />
-                <div className="relative flex items-center gap-3 px-6 py-5 pl-8">
-                  <KindGlyph kind="task" />
+                <div className="relative flex items-center gap-3 px-6 py-5">
+                  <SelectionMark kind="task" title="Draft the Q4 pitch" />
                   <h3 className="display flex-1 text-[1.35rem] leading-tight text-[var(--ink)]">
                     Draft the Q4 pitch
                   </h3>
@@ -847,15 +862,14 @@ function FinishCard({ active, reduced }: CardProps) {
               {/* Reset x as well as state: the card exited mid-drag, and
                   without this it re-enters parked at the throw distance. */}
               <Slab
-                hue={HUE_SUPERFUN}
                 tone="quiet"
                 onClick={() => {
                   x.jump(0);
                   setDone(false);
                 }}
               >
-                <div className="flex items-center gap-3 px-6 py-5 pl-8">
-                  <KindGlyph kind="task" />
+                <div className="flex items-center gap-3 px-6 py-5">
+                  <SelectionMark kind="task" done title="Draft the Q4 pitch" />
                   <h3
                     className="display flex-1 text-[1.35rem] leading-tight text-[var(--ink-3)]"
                     style={{ textDecoration: 'line-through' }}
@@ -981,7 +995,7 @@ function HuddlesCard({ active, reduced }: CardProps) {
       layoutId="onboarding-huddle-item"
       transition={reduced ? { duration: 0.01 } : settle}
     >
-      <Slab hue={HUE_HALCYON} tone={moved ? 'quiet' : 'default'} onClick={() => setMoved(m => !m)}>
+      <Slab tone={moved ? 'quiet' : 'default'} onClick={() => setMoved(m => !m)}>
         <div className="px-5 py-4 pl-7">
           <div className="flex items-start gap-3">
             <span className="mt-1">

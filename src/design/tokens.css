@@ -81,6 +81,23 @@
     0 36px 70px oklch(30% 0.02 70 / 0.12);
 
   --grain-opacity: 0.035;
+  /* Client identity, and the horizon chip's active ink.
+     Both take a hue via --pill-hue / --hue set on the element itself. The
+     client spine that used to carry this was a 7px full-height bar at chroma
+     0.16; eleven of them formed an aligned colour column down the leading edge,
+     which is the "bag of candy" its own docstring worried about. The wash is
+     about a sixth of --surface-2's presence, so hue survives and loudness does
+     not. */
+  --pill-wash: oklch(96% 0.018 var(--pill-hue, 250));
+  --chip-ink: oklch(45% 0.15 var(--hue, 250));
+
+  /* The leading mark on every list row. em-based so it grows with Angie's
+     system font instead of looking stranded beside 2rem type, clamped so it can
+     never crowd the title. */
+  --plate: clamp(28px, 0.9em, 40px);
+  /* Centre the plate on the title's FIRST line, not on the whole block. */
+  --mark-offset: 0.15em;
+
 }
 
 @media (prefers-color-scheme: dark) {
@@ -114,6 +131,10 @@
       0 36px 70px oklch(0% 0 0 / 0.45);
 
     --grain-opacity: 0.055;
+  --pill-wash: oklch(30% 0.022 var(--pill-hue, 250));
+  /* 45% lightness is near-invisible on a 20.5% surface. */
+  --chip-ink: oklch(78% 0.13 var(--hue, 250));
+
   }
 }
 
@@ -143,6 +164,10 @@
     0 14px 30px oklch(0% 0 0 / 0.45),
     0 36px 70px oklch(0% 0 0 / 0.45);
   --grain-opacity: 0.055;
+  --pill-wash: oklch(30% 0.022 var(--pill-hue, 250));
+  /* 45% lightness is near-invisible on a 20.5% surface. */
+  --chip-ink: oklch(78% 0.13 var(--hue, 250));
+
 }
 
 /* ------------------------------------------------------------- elements
@@ -248,5 +273,13 @@ body::after {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* 1lh gives exact first-line centring. Older Android WebViews fall back to the
+   0.15em approximation above, which is close enough to never read as broken. */
+@supports (height: 1lh) {
+  :root {
+    --mark-offset: calc((1lh - var(--plate)) / 2);
   }
 }

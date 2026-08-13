@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
-import { BigButton, ClientDot, HorizonChip, TensionBadge } from '../design/bits';
+import { BigButton, ClientPill, HorizonChip, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { settle, snap, zoom } from '../design/springs';
 import { useDismissDrag } from '../design/useDismissDrag';
@@ -119,7 +119,7 @@ export function BulletZoom({
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <HorizonChip horizon={bullet.horizon} active />
-              {client && <ClientDot hue={client.hue} name={client.name} />}
+              {client && <ClientPill hue={client.hue} name={client.name} />}
               {bullet.deadline && (
                 <span className="meta text-[var(--ink-2)]">
                   Target {relativeDay(bullet.deadline, today)}

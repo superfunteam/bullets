@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { Slab } from '../design/Slab';
-import { BigButton, Empty, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
+import { BigButton, Empty, HorizonChip, SelectionMark, TensionBadge } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
 import { Icon } from '../design/icons';
 import { byUrgency, tensionOf } from '../data/selectors';
@@ -9,6 +9,7 @@ import { useAllShots, useClients, useShelf } from '../data/store';
 import { shortDate, today as todayFn } from '../lib/dates';
 import type { Bullet, Shot } from '../data/types';
 import { CompletedSection } from './CompletedSection';
+import { useSelection } from './selection';
 
 /**
  * Everything we have not decided on yet, filed by client and shut by default.
@@ -123,7 +124,7 @@ export function ShelfView({
   }, [shelf, clients, shotsByBullet, today]);
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pb-40">
+    <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(10rem+var(--bulk-sheet-h,0px))]">
       <header className="px-2 pt-6 pb-5">
         <p className="meta text-[var(--ink-3)] uppercase">To be decided on</p>
         <h1 className="display mt-1 text-5xl text-[var(--ink)]">Shelf</h1>
@@ -207,7 +208,7 @@ function ClientDrawer({
         transition={snap}
         className="w-full"
       >
-        <Slab hue={group.hue} tone={open ? 'default' : 'quiet'} interactive>
+        <Slab tone={open ? 'default' : 'quiet'} interactive>
           <div className="flex min-h-[var(--tap)] items-center gap-3.5 px-5 py-4 pl-7">
             <motion.span
               aria-hidden
@@ -250,7 +251,7 @@ function ClientDrawer({
             className="mt-2.5 space-y-2.5 pl-3"
           >
             {group.rows.map(row => (
-              <ShelfRow key={row.bullet.id} row={row} hue={group.hue} onZoom={onZoom} />
+              <ShelfRow key={row.bullet.id} row={row} onZoom={onZoom} />
             ))}
           </motion.div>
         )}
@@ -261,23 +262,29 @@ function ClientDrawer({
 
 function ShelfRow({
   row,
-  hue,
   onZoom,
 }: {
   row: Row;
-  hue?: number;
   onZoom: (id: string) => void;
 }) {
+  const sel = useSelection();
   const { bullet, tension } = row;
 
   return (
-    <Slab hue={hue} onClick={() => onZoom(bullet.id)}>
-      <div className="flex min-h-[var(--tap)] items-start gap-3 px-5 py-4 pl-7">
-        <span className="mt-0.5 text-lg">
-          <KindGlyph kind={bullet.kind} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="display text-xl text-[var(--ink)]">{bullet.title}</p>
+    <Slab onClick={() => onZoom(bullet.id)}>
+      <div className="grid min-h-[var(--tap)] grid-cols-[auto_1fr] gap-x-3.5 px-5 py-4">
+        <SelectionMark
+          kind={bullet.kind}
+          selected={sel.has(bullet.id)}
+          title={bullet.title}
+          onToggle={() => sel.toggle('shelf', bullet.id)}
+        />
+        <div className="min-w-0">
+          {/* No client pill here: repeating one client name down its own drawer
+              is noise. The drawer header carries it instead. */}
+          <p className="display text-xl leading-[1.2] text-balance text-[var(--ink)]">
+            {bullet.title}
+          </p>
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
             <HorizonChip horizon={bullet.horizon} size="sm" />
             {bullet.count && (

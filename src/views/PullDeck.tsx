@@ -8,7 +8,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Slab } from '../design/Slab';
 import { Stepper } from '../design/Stepper';
-import { BigButton, ClientDot, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
+import { BigButton, ClientPill, HorizonChip, KindGlyph, TensionBadge } from '../design/bits';
 import { fling, prefersReducedMotion, settle, snap } from '../design/springs';
 import { Icon } from '../design/icons';
 import { moveToHorizon, pullToDay, pullToWeek, shelve } from '../data/mutations';
@@ -549,7 +549,7 @@ function CardFace({
   const left = bullet.deadline !== undefined ? daysUntil(today, bullet.deadline) : undefined;
 
   return (
-    <Slab hue={client?.hue} tone={tone} className="h-full">
+    <Slab tone={tone} className="h-full">
       {tints && (
         <>
           <motion.span
@@ -589,7 +589,7 @@ function CardFace({
         </div>
 
         <div className="space-y-2.5">
-          {client && <ClientDot hue={client.hue} name={client.name} />}
+          {client && <ClientPill hue={client.hue} name={client.name} />}
           {bullet.deadline && left !== undefined && (
             <p className="meta text-[var(--ink-2)]">
               Target · {relativeDay(bullet.deadline, today)}

@@ -185,7 +185,7 @@ function Row({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
-      transition={{ ...settle, delay: stagger(index) }}
+      transition={{ ...settle, delay: stagger(index), layout: settle }}
     >
       <HuddleStrip huddle={huddle} onOpen={() => onOpen(huddle.id)} />
     </motion.div>

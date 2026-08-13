@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
 import { Slab } from '../design/Slab';
-import { ClientDot, HorizonChip } from '../design/bits';
+import { ClientPill, HorizonChip } from '../design/bits';
 import { settle, snap, stagger } from '../design/springs';
 import { reopenBullet } from '../data/mutations';
 import { useCompleted, type CompletedRow } from '../data/store';
@@ -76,9 +76,9 @@ function CompletedCard({
       layout="position"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ ...settle, delay: stagger(index) }}
+      transition={{ ...settle, delay: stagger(index), layout: settle }}
     >
-      <Slab hue={client?.hue} tone="quiet">
+      <Slab tone="quiet">
         <div className="px-6 py-5 pl-8">
           <button type="button" onClick={() => onZoom(bullet.id)} className="w-full text-left">
             <h3
@@ -90,7 +90,7 @@ function CompletedCard({
           </button>
 
           <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-            {client && <ClientDot hue={client.hue} name={client.name} />}
+            {client && <ClientPill hue={client.hue} name={client.name} />}
             <HorizonChip horizon={bullet.horizon} size="sm" />
             {bullet.count && (
               <span className="meta text-[var(--ink-2)]">

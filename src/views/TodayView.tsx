@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { ShotCard } from './ShotCard';
 import { HuddleStrip } from './HuddleStrip';
 import { UpdateBanner } from './UpdateBanner';
+import { useSelection } from './selection';
 import { SyncPip } from './SyncPip';
 import { Empty, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
@@ -33,6 +34,7 @@ export function TodayView({
   const allBullets = useBullets();
   const allShots = useAllShots();
 
+  const sel = useSelection();
   const open = useMemo(() => rows.filter(r => r.shot.state === 'open'), [rows]);
   const hit = useMemo(() => rows.filter(r => r.shot.state === 'done'), [rows]);
 
@@ -81,7 +83,7 @@ export function TodayView({
   }, [allBullets, allShots, today]);
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pb-40">
+    <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(10rem+var(--bulk-sheet-h,0px))]">
       <header className="px-2 pt-6 pb-5">
         <p className="meta text-[var(--ink-3)] uppercase">
           {weekdayName(today)} · {shortDate(today)}
@@ -127,6 +129,8 @@ export function TodayView({
                 onZoom={onZoom}
                 index={i}
                 zoomId={zoomIds.get(row.shot.id)}
+                selected={sel.has(row.shot.id)}
+                onToggle={() => sel.toggle('today', row.shot.id)}
               />
             ))}
           </AnimatePresence>

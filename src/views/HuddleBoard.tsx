@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { Slab } from '../design/Slab';
-import { BigButton, ClientDot, KindGlyph } from '../design/bits';
+import { BigButton, ClientPill, KindGlyph } from '../design/bits';
 import { lane as laneSpring, settle, snap } from '../design/springs';
 import { Icon } from '../design/icons';
 import { presence, setPace } from '../sync/client';
@@ -643,7 +643,6 @@ function ItemBody({
 
   return (
     <Slab
-      hue={client?.hue}
       tone={decidedLane ? 'quiet' : 'default'}
       onClick={
         editing
@@ -668,7 +667,7 @@ function ItemBody({
             </p>
             {client && (
               <span className="mt-1.5 block">
-                <ClientDot hue={client.hue} name={client.name} />
+                <ClientPill hue={client.hue} name={client.name} />
               </span>
             )}
             {decidedLane && item.decision && (

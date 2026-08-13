@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef } from 'react';
-import { HORIZON_META, KIND_GLYPH, type BulletKind, type Horizon } from '../data/types';
+import { HORIZON_META, type BulletKind, type Horizon } from '../data/types';
 import { settle, snap } from './springs';
+import { Icon } from './icons';
 
 /** The horizon chip. Short, all caps, unmistakable at a glance. */
 export function HorizonChip({
@@ -25,8 +26,11 @@ export function HorizonChip({
     <span
       className={`inline-flex items-center gap-1.5 rounded-full ${pad}`}
       style={{
+        // The hue rides on the element so --chip-ink can resolve per theme.
+        // Hardcoded oklch(45% …) was near-invisible on the 20.5% dark surface.
+        ['--hue' as string]: meta.hue,
         background: active ? `oklch(60% 0.14 ${meta.hue} / 0.16)` : 'var(--surface-2)',
-        color: active ? `oklch(45% 0.15 ${meta.hue})` : 'var(--ink-2)',
+        color: active ? 'var(--chip-ink)' : 'var(--ink-2)',
         fontVariationSettings: "'wght' 700",
         letterSpacing: '0.06em',
       }}
@@ -37,35 +41,63 @@ export function HorizonChip({
   );
 }
 
-export function ClientDot({ hue, name }: { hue: number; name?: string }) {
+/**
+ * A client, as a pill.
+ *
+ * This replaced the Slab spine — a 7px full-height bar at chroma 0.16 down the
+ * leading edge of every card. The spine's own docstring argued it kept a screen
+ * of eleven clients "calm instead of like a bag of candy", and it was right
+ * about the risk and wrong about the cure: eleven spines line up into a
+ * continuous colour column, which is exactly what reads as candy. It also could
+ * only ever be a code you had to learn.
+ *
+ * The pill carries a sixth of the saturated area, pins every client to one wash
+ * lightness and one ink so none of them shouts, and says the name out loud.
+ * Chroma lives on the dot alone — nine coloured words in a column would let the
+ * candy back in through the type.
+ */
+export function ClientPill({ hue, name }: { hue: number; name?: string }) {
+  if (!name) return null;
   return (
-    <span className="meta inline-flex items-center gap-2 text-[var(--ink-2)]">
+    <span
+      className="meta inline-flex max-w-[14ch] items-center gap-1.5 rounded-full px-2.5 py-1
+                 text-[var(--ink-2)]"
+      style={{
+        // Set here, never inherited: Slab's old --hue is gone with the spine,
+        // and a pill reading a missing var renders grey on every row.
+        ['--pill-hue' as string]: hue,
+        background: 'var(--pill-wash)',
+        fontVariationSettings: "'wght' 600",
+      }}
+    >
       <span
         aria-hidden
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ background: `oklch(60% 0.16 ${hue})` }}
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ background: 'oklch(60% 0.16 var(--pill-hue))' }}
       />
-      {name}
+      <span className="truncate">{name}</span>
     </span>
   );
 }
 
-/**
- * Classic bullet journal signifier: a filled dot for a task, a ring for an
- * event, a dash for a note.
- *
- * Drawn rather than typed. The glyph characters render at wildly different
- * optical sizes across faces, which left the mark looking orphaned next to a
- * large title instead of anchoring it.
- */
-export function KindGlyph({ kind, size = 16 }: { kind: BulletKind; size?: number }) {
+export function KindGlyph({
+  kind,
+  size,
+  className = 'text-[var(--ink-3)]',
+}: {
+  kind: BulletKind;
+  /** Omit inside the selection mark, where the plate sizes it. */
+  size?: number;
+  className?: string;
+}) {
   return (
     <svg
-      width={size}
-      height={size}
+      width={size ?? '100%'}
+      height={size ?? '100%'}
       viewBox="0 0 16 16"
       aria-hidden
-      className="shrink-0 text-[var(--ink-3)]"
+      // currentColor, so the glyph can invert when its plate fills with ink.
+      className={`shrink-0 ${className}`}
     >
       {kind === 'task' && <circle cx="8" cy="8" r="4" fill="currentColor" />}
       {kind === 'event' && (
@@ -78,7 +110,96 @@ export function KindGlyph({ kind, size = 16 }: { kind: BulletKind; size?: number
   );
 }
 
-export { KIND_GLYPH };
+
+/**
+ * The leading mark on every list row: selection control and bullet-journal
+ * signifier in one plate.
+ *
+ * The rule is one sentence: **the box picks things, the swipe finishes them.**
+ * It never mutates anything. That is what lets a checkbox sit beside a task
+ * without lying — a plain checkbox there means "done" to everyone alive, and
+ * swipe-right already means done, so a box that completed would have left no
+ * way to select and a box that selected would have contradicted the gesture.
+ *
+ * The signifier survives because the plate HOLDS KindGlyph rather than
+ * replacing it: filled dot, ring and dash are all still there, which matters in
+ * an app named for the method. Events and notes get the same plate — a
+ * signifier says what a row is, it was never a permission system.
+ *
+ * Two colours, and they never collide: selected fills with ink, done fills with
+ * --hit and swaps in a check. A done row's mark is inert status, not a control.
+ */
+export function SelectionMark({
+  kind,
+  selected,
+  done,
+  title,
+  onToggle,
+}: {
+  kind: BulletKind;
+  selected?: boolean;
+  /** Done rows render status, take no pointer events, and cannot be selected. */
+  done?: boolean;
+  title: string;
+  onToggle?: () => void;
+}) {
+  const plate = (
+    <motion.span
+      className="flex items-center justify-center rounded-[10px] border-2"
+      style={{
+        width: 'var(--plate)',
+        height: 'var(--plate)',
+        background: done ? 'var(--hit)' : selected ? 'var(--ink)' : 'transparent',
+        borderColor: done ? 'var(--hit)' : selected ? 'var(--ink)' : 'var(--line-strong)',
+        color: done || selected ? 'var(--bg)' : 'var(--ink-3)',
+      }}
+      // Fill and scale only. `layout` here would make every row measure itself
+      // on every tick of a selection.
+      animate={selected ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+      transition={snap}
+    >
+      <span
+        className="flex items-center justify-center"
+        style={{ width: 'calc(var(--plate) * 0.58)', height: 'calc(var(--plate) * 0.58)' }}
+      >
+        {done ? <Icon name="check" size={undefined} className="h-full w-full" /> : (
+          <KindGlyph kind={kind} className="" />
+        )}
+      </span>
+    </motion.span>
+  );
+
+  if (done || !onToggle) {
+    return (
+      <span
+        aria-hidden
+        className="pointer-events-none inline-flex self-start"
+        style={{ marginTop: 'var(--mark-offset)' }}
+      >
+        {plate}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={Boolean(selected)}
+      // The label never changes, because the meaning never changes.
+      aria-label={`Select ${title}`}
+      onClick={e => {
+        // The row's own tap zooms; without this both fire.
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="-my-1.5 inline-flex min-h-11 min-w-11 select-none items-center justify-center self-start"
+      style={{ marginTop: 'var(--mark-offset)' }}
+    >
+      {plate}
+    </button>
+  );
+}
 
 /**
  * Target tension, rendered. The one place saturated semantic color is allowed,
@@ -111,7 +232,6 @@ export function TensionBadge({
   );
 }
 
-/** Undo affordance. Its existence is what lets completion skip confirmation. */
 /** How long a toast stays up before it clears itself. */
 const TOAST_MS = 3200;
 
@@ -155,7 +275,7 @@ export function Toast({
           className="pointer-events-auto fixed inset-x-4 z-[60] flex cursor-pointer items-center
                      justify-between gap-4 overflow-hidden rounded-[var(--r-md)] bg-[var(--ink)]
                      px-5 py-4 text-[var(--bg)] shadow-[var(--shadow-3)]"
-          style={{ bottom: 'calc(var(--inset-bottom) + 6.5rem)' }}
+          style={{ bottom: 'calc(var(--inset-bottom) + 6.5rem + var(--bulk-sheet-h, 0px))' }}
           initial={{ y: 20, opacity: 0, scale: 0.97 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: 20, opacity: 0, scale: 0.97 }}

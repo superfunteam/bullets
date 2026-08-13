@@ -48,13 +48,6 @@ export type Client = Entity & {
 
 export type BulletKind = 'task' | 'event' | 'note';
 
-/** Classic bullet journal signifiers: a dot, a circle, a dash. */
-export const KIND_GLYPH: Record<BulletKind, string> = {
-  task: '•',
-  event: '○',
-  note: '—',
-};
-
 export type Bullet = Entity & {
   title: string;
   note?: string;

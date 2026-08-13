@@ -14,6 +14,8 @@ import { BulletZoom } from './views/BulletZoom';
 import { PullDeck } from './views/PullDeck';
 import { SignIn } from './views/SignIn';
 import { Onboarding } from './views/Onboarding';
+import { BulkSheet } from './views/BulkSheet';
+import { useSelection } from './views/selection';
 import { restoreIdentity } from './sync/auth';
 import { startSync } from './sync/client';
 import { useHuddles } from './data/store';
@@ -40,7 +42,9 @@ export function App() {
   const [capturing, setCapturing] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [toastAction, setToastAction] = useState<'shelf' | null>(null);
+  // A carried handler, so a bulk action's UNDO can hang off the same toast the
+  // rest of the app uses instead of growing a second notification surface.
+  const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null);
 
   const huddles = useHuddles();
   const me = getActor();
@@ -149,7 +153,30 @@ export function App() {
   }, []);
 
   const closeOverlay = useCallback(() => setOverlay({ kind: 'none' }), []);
-  const zoomTo = useCallback((bulletId: string) => setOverlay({ kind: 'zoom', bulletId }), []);
+
+  const selection = useSelection();
+
+  /**
+   * Zooming drops the selection. One bullet in front of you is a different job
+   * from a batch, and it stops the non-modal bulk sheet stranding behind a
+   * full-screen overlay that has claimed the same layoutId.
+   */
+  const zoomTo = useCallback(
+    (bulletId: string) => {
+      selection.clear();
+      setOverlay({ kind: 'zoom', bulletId });
+    },
+    [selection],
+  );
+
+  // A selection belongs to the screen it was made on, so leaving cancels it.
+  const goTab = useCallback(
+    (next: Tab) => {
+      selection.clear();
+      setTab(next);
+    },
+    [selection],
+  );
   const openHuddle = useCallback(
     (huddleId: string) => setOverlay({ kind: 'huddle', huddleId }),
     [],
@@ -211,7 +238,7 @@ export function App() {
 
       <TabBar
         tab={tab}
-        onTab={setTab}
+        onTab={goTab}
         onCapture={() => setCapturing(true)}
         huddleBadge={pendingHuddles}
       />
@@ -225,7 +252,7 @@ export function App() {
               ? 'Saved to the Shelf'
               : `Saved to ${HORIZON_META[horizon].label}`,
           );
-          setToastAction(horizon === 'shelf' ? 'shelf' : null);
+          setToastAction(horizon === 'shelf' ? { label: 'Show', run: () => setTab('shelf') } : null);
         }}
       />
 
@@ -261,11 +288,19 @@ export function App() {
           path that cleared it, one left unacknowledged sat there permanently.
           It times itself out now; "Show" survives because going to the Shelf
           is a real thing you might want, not an acknowledgement. */}
+      {/* Root-mounted, non-modal: it stands while you keep ticking rows. */}
+      <BulkSheet
+        onToast={(message, undo) => {
+          setToast(message);
+          setToastAction(undo ? { label: undo.label, run: () => void undo.run() } : null);
+        }}
+      />
+
       <Toast
         message={toast}
-        actionLabel={toastAction === 'shelf' ? 'Show' : undefined}
+        actionLabel={toastAction?.label}
         onAction={() => {
-          setTab('shelf');
+          toastAction?.run();
           setToast(null);
           setToastAction(null);
         }}
