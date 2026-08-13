@@ -121,6 +121,15 @@ add another way to finish work, it has to converge the same way.
 soft-deleting a done one silently erases work that actually happened and resets
 a counted bullet to zero. `moveToHorizon` clears only *open* commitments.
 
+**A local write and its outbox op must commit together.** `mutate()` wraps
+`applyLocal` and `enqueue` in ONE Dexie transaction spanning the entity tables
+AND `outbox`. They used to be two commits, so an app killed in between kept the
+change locally with no op queued — it looked saved, survived a reload, and never
+reached the server or the other device, and nothing reported it because from the
+app's side there was nothing outstanding. `durability.test.ts` fails the queue
+write on purpose to pin this; if you split those writes again, that test is the
+one that goes red.
+
 **Clock skew between devices.** `mutations.ts` uses a hybrid logical clock that
 absorbs every timestamp it sees, local or remote. Without it, one phone running
 slightly fast permanently poisons a field: later edits from the other phone
