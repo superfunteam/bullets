@@ -3,7 +3,9 @@ import { Sheet } from '../design/Sheet';
 import { BigButton } from '../design/bits';
 import { db } from '../data/db';
 import {
+  runAction,
   completeBullet,
+  setCompletedCount,
   completeShot,
   deleteBullet,
   moveToHorizon,
@@ -13,6 +15,7 @@ import {
   uncompleteShot,
 } from '../data/mutations';
 import { useBullets, useShelf, useShotsOn, useWeekShots } from '../data/store';
+import { progressOf } from '../data/selectors';
 import { today as todayFn, weekStart } from '../lib/dates';
 import type { Bullet, Shot } from '../data/types';
 import { useSelection } from './selection';
@@ -132,30 +135,58 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
             .map(k => (k as unknown as Bullet).id),
         })),
       );
-      for (const b of targets) await completeBullet(b.id);
+      // One action id, so history reads "marked 3 things done", not 3 lines.
+      await runAction(async () => {
+        for (const b of targets) await completeBullet(b.id);
+      });
       clear();
       onToast(`Marked ${targets.length} done`, {
         label: 'UNDO',
-        run: async () => {
-          for (const s of [...snapshot].reverse()) {
-            await reopenBullet(s.id);
-            for (const kid of s.openChildren) await reopenBullet(kid);
-          }
-        },
+        run: () =>
+          runAction(async () => {
+            for (const s of [...snapshot].reverse()) {
+              await reopenBullet(s.id);
+              for (const kid of s.openChildren) await reopenBullet(kid);
+            }
+          }),
       });
       return;
     }
 
     // Per shot, byte-identical to swiping that row right. Two gestures on one
     // row must not produce two different states.
+    //
+    // UNDO for a counted bullet restores by COUNT, not by flipping states: the
+    // swipe may trim and regroup rows, so a state flip cannot find its way
+    // back — a swipe+undo round trip was erasing the progress recorded BEFORE
+    // the swipe. progressOf before the action is the truth to return to.
     const shots = picked.shots.map(s => s.id);
-    for (const id of shots) await completeShot(id);
+    const countedBefore = await Promise.all(
+      picked.bullets
+        .filter(b => b.count)
+        .map(async b => ({
+          id: b.id,
+          done: progressOf(
+            b,
+            (await db.shots.where('bulletId').equals(b.id).toArray())
+              .map(r => r as unknown as Shot)
+              .filter(r => !r.deletedAt),
+          ).done,
+        })),
+    );
+    const countedIds = new Set(countedBefore.map(c => c.id));
+    const simpleShots = picked.shots.filter(s => !countedIds.has(s.bulletId)).map(s => s.id);
+    await runAction(async () => {
+      for (const id of shots) await completeShot(id);
+    });
     clear();
     onToast(`Marked ${shots.length} done`, {
       label: 'UNDO',
-      run: async () => {
-        for (const id of [...shots].reverse()) await uncompleteShot(id);
-      },
+      run: () =>
+        runAction(async () => {
+          for (const id of [...simpleShots].reverse()) await uncompleteShot(id);
+          for (const c of countedBefore) await setCompletedCount(c.id, c.done);
+        }),
     });
   };
 
@@ -175,11 +206,14 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
         .filter(s => s.bulletId === b.id && s.state === 'open')
         .map(s => ({ scope: s.scope, date: s.date, amount: s.amount })),
     }));
-    for (const b of picked.bullets) await moveToHorizon(b.id, 'shelf');
+    await runAction(async () => {
+      for (const b of picked.bullets) await moveToHorizon(b.id, 'shelf');
+    });
     clear();
     onToast(`Unscheduled ${snapshot.length}`, {
       label: 'UNDO',
-      run: async () => {
+      run: () =>
+        runAction(async () => {
         for (const s of snapshot) {
           // Week first, then day: replaying in that order lands the horizon
           // back on its original value as a side effect, so nothing has to
@@ -191,7 +225,7 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
             await pullToDay(s.id, sh.date, sh.amount);
           }
         }
-      },
+        }),
     });
   };
 
@@ -199,7 +233,9 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
   // deleteBullet must not run against an already-tombstoned row.
   const doDelete = async () => {
     const targets = picked.bullets.map(b => b.id);
-    for (const id of targets) await deleteBullet(id);
+    await runAction(async () => {
+      for (const id of targets) await deleteBullet(id);
+    });
     clear();
     // No UNDO: deleteBullet soft-deletes with a cascade and there is no restore
     // mutation, so an UNDO that cannot fire would be a worse lie than none.

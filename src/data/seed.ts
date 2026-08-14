@@ -1,5 +1,6 @@
 import { db } from './db';
 import { mutate } from './mutations';
+import { runAuto } from './mutations';
 
 /**
  * A first-run set of clients so the Shelf and Capture aren't empty on day one.
@@ -24,7 +25,12 @@ const STARTERS: { id: string; name: string; hue: number }[] = [
 /** The placeholder clients shipped before the real list existed. */
 const RETIRED = ['client-superfun', 'client-one', 'client-two', 'client-three'];
 
-export async function seedIfEmpty(): Promise<void> {
+export function seedIfEmpty(): Promise<void> {
+  // The starter clients are the app's doing, not the first person to sign in.
+  return runAuto(() => seedIfEmptyCore());
+}
+
+async function seedIfEmptyCore(): Promise<void> {
   const existing = await db.clients.toArray();
   const live = existing.filter(c => !c.deletedAt);
 

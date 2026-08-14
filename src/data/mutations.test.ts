@@ -31,6 +31,7 @@ import { addDays, today, weekStart } from '../lib/dates';
 import { progressOf } from './selectors';
 import { hasAnswered, responseOf, type Bullet, type Huddle, type Shot } from './types';
 import type { Horizon } from './types';
+import { groupCountedDayRows } from './store';
 
 /**
  * Horizons that are still STORED and still arrive from peers, but are no longer
@@ -348,13 +349,25 @@ describe('scheduling is idempotent', () => {
     expect(await shotsOf(id)).toHaveLength(1);
   });
 
-  it('merges a second partial claim into the existing shot', async () => {
+  it('keeps a second partial claim on its own row, summing at render', async () => {
+    /**
+     * This used to merge into the existing row. It must not: the existing row
+     * may be mid-consumption on the OTHER device, whose reconciler empties
+     * rows it consumes — an increment merged into a row a peer is tombstoning
+     * is durably erased. Per-writer rows keep each claim on the row that
+     * recorded it; groupCountedDayRows folds them into one card for display.
+     */
     const id = await createBullet({ title: 'Posts', count: { total: 20, unit: 'posts' } });
     await pullToDay(id, '2026-08-12', 3);
     await pullToDay(id, '2026-08-12', 5);
     const shots = await shotsOf(id);
-    expect(shots).toHaveLength(1);
-    expect(shots[0].amount).toBe(8);
+    expect(shots).toHaveLength(2);
+    expect(shots.reduce((n, s) => n + (s.amount ?? 1), 0)).toBe(8);
+    const cards = groupCountedDayRows(
+      shots.map(shot => ({ shot, bullet: { count: { total: 20, unit: 'posts' } } as never })),
+    );
+    expect(cards).toHaveLength(1);
+    expect(cards[0].shot.amount).toBe(8);
   });
 
   it('still allows the same bullet on two different days', async () => {

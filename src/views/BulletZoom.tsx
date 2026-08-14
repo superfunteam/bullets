@@ -463,9 +463,13 @@ export function BulletZoom({
                     <BigButton
                       tone="quiet"
                       onClick={() =>
+                        // The date is read AT TAP TIME. The zoom can sit open
+                        // across midnight without a re-render, and a stale
+                        // render-scoped date commits the work to yesterday —
+                        // which the next roll-forward silently retires.
                         void pullToDay(
                           bullet.id,
-                          today,
+                          todayFn(),
                           // A counted bullet with no amount scores as 1, so
                           // "do today" on 20 posts used to claim a single post
                           // and look identical to claiming the lot.

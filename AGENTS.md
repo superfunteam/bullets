@@ -124,6 +124,18 @@ ten hit on each phone, left both holding 20 of 20 done with the bullet open
 forever. `settleFromOps()` runs after `applyLocal` in the sync client. If you
 add another way to finish work, it has to converge the same way.
 
+**Counted-bullet shots are PER-WRITER rows; one-card-per-day is a RENDER rule.**
+Never "simplify" by merging a day's shots into one row, folding duplicates, or
+incrementing another row's amount (pullTo deliberately does NOT merge counted
+claims). Field-level LWW cannot additively merge a counter: a fold is two
+causally-untied writes (keeper's new amount + duplicate's tombstone), and any
+concurrent write to either row silently erases recorded work — an adversarial
+stress run verified 6 recorded parts converging to 3 on both devices. Amounts
+stay on the row that recorded them; `groupCountedDayRows` in store.ts folds a
+day's rows into one card at render time. Progress derives ONLY from done rows.
+Emptying a row is one atomic patch `{ amount: 0, deletedAt }` — two patches
+leave a live "0 of N" card when the app dies between commits.
+
 **Never delete a completed shot.** Progress is derived from live shots, so
 soft-deleting a done one silently erases work that actually happened and resets
 a counted bullet to zero. `moveToHorizon` clears only *open* commitments.

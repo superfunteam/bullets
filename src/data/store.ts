@@ -73,7 +73,63 @@ const EMPTY_RANGE: Record<string, ShotRow[]> = {};
 
 export type ShotRow = { shot: Shot; bullet: Bullet; client?: Client };
 
+/**
+ * One card per (bullet, date, state) for counted bullets.
+ *
+ * The data layer deliberately holds PER-WRITER rows — each claim and each
+ * recorded chunk of work stays on the row that wrote it, because field-level
+ * LWW cannot merge amounts across rows without a concurrent writer silently
+ * erasing one (that shipped, twice). So the row set is allowed to grow, and
+ * the CARD is the unit the user sees: this folds a day's rows into one
+ * representative per state, amounts summed for display.
+ *
+ * Representative choice is load-bearing:
+ * - open  → oldest by sortKey, a stable identity for layoutId and the zoom.
+ * - done  → NEWEST by ts, so tapping the struck card un-hits the most recent
+ *   work first — undoing a swipe restores exactly what the swipe recorded.
+ */
+export function groupCountedDayRows(rows: ShotRow[]): ShotRow[] {
+  const out: ShotRow[] = [];
+  const groups = new Map<string, ShotRow[]>();
+
+  for (const row of rows) {
+    if (!row.bullet.count || row.shot.scope !== 'day') {
+      out.push(row);
+      continue;
+    }
+    const key = `${row.bullet.id}|${row.shot.date}|${row.shot.state}`;
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+
+  for (const list of groups.values()) {
+    if (list.length === 1) {
+      out.push(list[0]);
+      continue;
+    }
+    const done = list[0].shot.state === 'done';
+    const rep = [...list].sort((a, b) =>
+      done
+        ? (b.shot.updatedAt ?? 0) - (a.shot.updatedAt ?? 0)
+        : a.shot.sortKey < b.shot.sortKey
+          ? -1
+          : 1,
+    )[0];
+    const sum = list.reduce((n, r) => n + (r.shot.amount ?? 1), 0);
+    // A display clone — the stored rows keep their own amounts.
+    out.push({ ...rep, shot: { ...rep.shot, amount: sum } });
+  }
+
+  return out;
+}
+
+
 async function joinShots(rows: Materialized[]): Promise<ShotRow[]> {
+  return groupCountedDayRows(await joinShotsRaw(rows));
+}
+
+async function joinShotsRaw(rows: Materialized[]): Promise<ShotRow[]> {
   const shots = cleanAll<Shot>(rows);
   const bullets = await db.bullets.bulkGet(shots.map(s => s.bulletId));
   const clientIds = [
