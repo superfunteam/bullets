@@ -74,14 +74,16 @@ const EMPTY_RANGE: Record<string, ShotRow[]> = {};
 export type ShotRow = { shot: Shot; bullet: Bullet; client?: Client };
 
 /**
- * One card per (bullet, date, state) for counted bullets.
+ * One card per (bullet, date, state) — for EVERY bullet, not just counted.
  *
- * The data layer deliberately holds PER-WRITER rows — each claim and each
+ * The data layer deliberately holds PER-WRITER rows: each claim and each
  * recorded chunk of work stays on the row that wrote it, because field-level
- * LWW cannot merge amounts across rows without a concurrent writer silently
- * erasing one (that shipped, twice). So the row set is allowed to grow, and
- * the CARD is the unit the user sees: this folds a day's rows into one
- * representative per state, amounts summed for display.
+ * LWW cannot merge rows without a concurrent writer silently erasing one
+ * (that shipped, twice). And rows genuinely duplicate across devices with no
+ * bug anywhere: rollForwardNow runs on EVERY device, each retiring the stale
+ * shot and minting its own replacement — two phones rolling the same NOW
+ * bullet forward inside the sync gap is two open rows, every morning. So the
+ * row set is allowed to grow, and the CARD is the unit the user sees.
  *
  * Representative choice is load-bearing:
  * - open  → oldest by sortKey, a stable identity for layoutId and the zoom.
@@ -93,7 +95,7 @@ export function groupCountedDayRows(rows: ShotRow[]): ShotRow[] {
   const groups = new Map<string, ShotRow[]>();
 
   for (const row of rows) {
-    if (!row.bullet.count || row.shot.scope !== 'day') {
+    if (row.shot.scope !== 'day') {
       out.push(row);
       continue;
     }
@@ -116,9 +118,14 @@ export function groupCountedDayRows(rows: ShotRow[]): ShotRow[] {
           ? -1
           : 1,
     )[0];
-    const sum = list.reduce((n, r) => n + (r.shot.amount ?? 1), 0);
-    // A display clone — the stored rows keep their own amounts.
-    out.push({ ...rep, shot: { ...rep.shot, amount: sum } });
+    if (list[0].bullet.count) {
+      const sum = list.reduce((n, r) => n + (r.shot.amount ?? 1), 0);
+      // A display clone — the stored rows keep their own amounts.
+      out.push({ ...rep, shot: { ...rep.shot, amount: sum } });
+    } else {
+      // A simple bullet's duplicates carry no amounts; the card is just one.
+      out.push(rep);
+    }
   }
 
   return out;

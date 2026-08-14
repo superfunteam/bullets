@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
-import { completeShot, createBullet, pullToDay, setCompletedCount, uncompleteShot } from './mutations';
+import {
+  completeBullet,
+  completeShot,
+  createBullet,
+  pullToDay,
+  setCompletedCount,
+  uncompleteShot,
+} from './mutations';
 import { groupCountedDayRows, type ShotRow } from './store';
 import { progressOf } from './selectors';
 import { clean } from './ops';
@@ -237,5 +244,71 @@ describe('the swipe round trip', () => {
 
     expect((await progress(id)).done).toBe(5);
     expect((await read(id)).state).toBe('done');
+  });
+});
+
+describe('simple bullets: phase changes hold the same promises', () => {
+  const cards = async (id: string, state: 'open' | 'done') => {
+    const bullet = await read(id);
+    const rows: ShotRow[] = (await shotsOf(id))
+      .filter(s => s.scope === 'day' && s.state === state)
+      .map(shot => ({ shot, bullet }));
+    return groupCountedDayRows(rows);
+  };
+
+  it('completing from the zoom keeps the work record', async () => {
+    /**
+     * The 1.7.0 regression, pinned: completeBullet's sweep DELETED a simple
+     * bullet's open shot, so "Mark done" erased it from Today — no Done row,
+     * nothing to un-tap, the work just vanished.
+     */
+    const id = await createBullet({ title: 'Call Ant Guy', horizon: 'now' });
+    await completeBullet(id);
+
+    expect((await read(id)).state).toBe('done');
+    // The shot survives as the Done row.
+    expect((await cards(id, 'done')).length).toBe(1);
+    expect((await cards(id, 'open')).length).toBe(0);
+  });
+
+  it('renders one card when two devices rolled the same bullet forward', async () => {
+    /**
+     * The screenshot: "Call Ant Guy" twice, both open. rollForwardNow runs on
+     * EVERY device — each retires the stale shot and mints its own replacement,
+     * so two devices inside the sync gap produce two open rows with no bug in
+     * either. The card, not the row, is the unit the user sees.
+     */
+    const id = await createBullet({ title: 'Call Ant Guy', horizon: 'now' });
+    // The second device's replacement row, arriving by sync.
+    const { mutate } = await import('./mutations');
+    await mutate('shot', 'peer-roll-forward', {
+      bulletId: id,
+      scope: 'day',
+      date: todayFn(),
+      state: 'open',
+      sortKey: 'zzz',
+    });
+
+    const raw = (await shotsOf(id)).filter(s => s.scope === 'day' && s.state === 'open');
+    expect(raw.length).toBe(2);
+    expect((await cards(id, 'open')).length).toBe(1);
+  });
+
+  it('completing while duplicates exist closes every row into one Done card', async () => {
+    const id = await createBullet({ title: 'Call Ant Guy', horizon: 'now' });
+    const { mutate } = await import('./mutations');
+    await mutate('shot', 'peer-dup', {
+      bulletId: id,
+      scope: 'day',
+      date: todayFn(),
+      state: 'open',
+      sortKey: 'zzz',
+    });
+
+    await completeBullet(id);
+
+    expect((await cards(id, 'open')).length).toBe(0);
+    // Both rows flipped done — the record survives — and render as ONE card.
+    expect((await cards(id, 'done')).length).toBe(1);
   });
 });
