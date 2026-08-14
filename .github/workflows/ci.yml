@@ -11,6 +11,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Tags are needed to tell a released version from an untagged one.
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -19,3 +22,17 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+      # Netlify deploys the web from main the moment it lands, but the APK is
+      # only built by a `v*` tag. Forget the tag and the two silently diverge:
+      # the web moves on, the phone stays behind, and nothing anywhere says so.
+      # That happened — the web ran 1.6.1 for a day while the APK sat at 1.6.0.
+      - name: Warn when main is ahead of the last release tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION is tagged; the APK build has run for this version."
+          else
+            echo "::warning title=No APK for this version::package.json is $VERSION and there is no v$VERSION tag. The web is deploying from main but no Android release will build. Run: git tag -a v$VERSION -m 'Bullets v$VERSION' && git push origin v$VERSION"
+          fi

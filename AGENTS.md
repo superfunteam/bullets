@@ -35,6 +35,13 @@ npm run build
 Ship a release: bump `package.json`, commit, tag `vX.Y.Z`, push. GitHub Actions
 builds a signed APK onto Releases; Netlify deploys the web from `main`.
 
+**The tag is not optional, and forgetting it fails silently.** Netlify deploys
+the web the moment a commit lands on `main`; the APK is built ONLY by a `v*`
+tag. Skip the tag and the web moves on while the phone stays behind, with
+nothing anywhere reporting it — the web ran 1.6.1 for a day while the APK sat
+at 1.6.0 and the only signal was Clark noticing. CI now emits a warning
+annotation when `main`'s `package.json` version has no matching tag.
+
 ---
 
 ## The product idea, because it constrains the code
