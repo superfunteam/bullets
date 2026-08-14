@@ -124,6 +124,27 @@ ten hit on each phone, left both holding 20 of 20 done with the bullet open
 forever. `settleFromOps()` runs after `applyLocal` in the sync client. If you
 add another way to finish work, it has to converge the same way.
 
+**The hybrid clock must be reseeded at boot (`initClock`), before anything
+writes.** `lastTs` lives in memory; without the reseed, any absorbed clock skew
+is forgotten at restart and every post-restart tap on an affected field loses
+LWW silently — tap, nothing happens. It seeds from history's max ts (recorded
+in the same transaction as every entity write). App boot awaits it before
+rollForwardNow and startSync; mutate() has a lazy backstop. The backstop must
+stay ZONE-SAFE: sequential Dexie awaits only. An awaited NATIVE promise inside
+a joined Dexie transaction lets IndexedDB auto-commit under the rest of the
+action — which is also why full action-atomicity was attempted and reverted;
+crash-safety comes from WRITE ORDERING instead (the invisible half commits
+first: createBullet writes the shot before the bullet).
+
+**The pull cursor is watermarked server-side.** sync.mts never lets a client
+persist a cursor past the newest op old enough to have certainly committed
+(30s), so a device that sleeps mid-gap re-pulls instead of skipping ops
+forever. Young rows re-deliver until the watermark passes them — applyOp is
+idempotent, that is the design. Client-side, the cursor write is monotonic and
+each tab keeps an `appliedThrough` floor so a woken sibling tab re-pulls what
+another tab already applied (its own cached observables only refresh from ops
+applied in ITS context).
+
 **Merged peer state needs REPAIR, not just settling.** Two devices racing
 produce merged rows no single device would ever write — a done+deleted shot, a
 done bullet holding a live open shot, a done parent with an open child. Each

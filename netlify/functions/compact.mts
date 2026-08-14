@@ -33,6 +33,10 @@ export default async () => {
     })),
   });
 
+  // Idempotent, applied here so the index needs no manual migration step.
+  // The watermark query on every pull reads max(seq) over ops by created_at.
+  await db.sql`create index if not exists ops_created_at_idx on ops (created_at)`;
+
   // Presence rows are ephemeral; anything stale is noise.
   await db.sql`delete from presence where seen_at < now() - interval '1 day'`;
 

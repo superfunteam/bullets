@@ -79,6 +79,20 @@ async function cursor(): Promise<number> {
   return ((await db.meta.get('cursor'))?.value as number | undefined) ?? 0;
 }
 
+/**
+ * The newest seq THIS TAB has applied, as opposed to the shared cursor.
+ *
+ * Two web tabs share one IndexedDB and one meta.cursor. The front tab applies
+ * a peer's completion and advances the cursor; a frozen background tab never
+ * sees Dexie's invalidation, and on waking it asks for seq > sharedCursor,
+ * gets nothing, and its module-scope cached observables keep serving the
+ * pre-completion snapshot indefinitely — a completed task rendering as open,
+ * unboundedly stale. Pulling from min(appliedThrough, cursor) makes a woken
+ * tab re-fetch the span a sibling already applied; applyLocal is idempotent,
+ * and running it HERE fires this tab's Dexie events and re-renders.
+ */
+let appliedThrough = 0;
+
 let rerunAfterFlight = false;
 
 export async function syncOnce(): Promise<void> {
@@ -104,11 +118,12 @@ export async function syncOnce(): Promise<void> {
     let pages = 0;
 
     for (;;) {
+      const sinceSent = Math.min(appliedThrough, await cursor());
       const res = await fetch(apiUrl('/api/sync'), {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          since: await cursor(),
+          since: sinceSent,
           ops: sentOutbox ? [] : outgoing,
           context,
         }),
@@ -141,10 +156,21 @@ export async function syncOnce(): Promise<void> {
         // counted bullet finished across both phones stays open forever.
         await settleFromOps(body.ops);
       }
-      await db.meta.put({ key: 'cursor', value: body.seq });
+      /**
+       * Monotonic, and floored by what this tab has now applied. The server's
+       * watermark can return a seq BELOW rows it just delivered (young rows
+       * re-deliver until their commit window passes); regressing the shared
+       * cursor for that would make every device re-pull the whole span.
+       */
+      const persisted = await cursor();
+      if (body.seq > persisted) await db.meta.put({ key: 'cursor', value: body.seq });
+      appliedThrough = Math.max(appliedThrough, body.seq);
       present = body.presence ?? [];
 
       if (!body.ops || body.ops.length < PAGE_SIZE) break;
+      // No forward progress means the watermark is holding the cursor over
+      // young rows — stop paging rather than spinning on the same span.
+      if (body.seq <= sinceSent) break;
       if (++pages > 50) break;
     }
 
@@ -220,7 +246,14 @@ export function startSync(): void {
   if (started) return;
   started = true;
 
-  void syncOnce().catch(() => {});
+  // Seed the per-tab floor from the persisted cursor: a FRESH tab's queries
+  // read current IndexedDB, so it owes no re-pull. Left at zero, every app
+  // start would re-fetch the entire log. The floor only lags the shared
+  // cursor when a SIBLING tab advances it while this one is alive.
+  void (async () => {
+    appliedThrough = Math.max(appliedThrough, await cursor());
+    await syncOnce().catch(() => {});
+  })();
   schedule();
   const unsubscribeChanges = onChange(pushSoon);
 

@@ -71,23 +71,37 @@ export default async (req: Request) => {
   }
 
   /**
-   * The overlap window is load-bearing, not belt-and-braces.
+   * The overlap is a WATERMARK on the cursor, not an OR-clause on the read.
    *
-   * `seq` is a bigserial, and sequence values are allocated BEFORE commit. So a
-   * reader can see seq 503 while 500-502 are still uncommitted, advance its
-   * cursor past them, and never be offered them again — Angie's board would
-   * silently lose three of Clark's edits, permanently, with no error anywhere.
+   * `seq` is a bigserial, allocated BEFORE commit: a reader can see seq 503
+   * while 500-502 are uncommitted. The old guard re-delivered the last 30
+   * seconds of rows — which only works if the reader polls again within 30
+   * seconds. A locked iPhone or a closed laptop lid routinely sleeps longer,
+   * and a device that persisted a cursor past the gap then skipped those ops
+   * FOREVER: a task saved on one phone that never appears on the other, with
+   * no error anywhere.
    *
-   * Rather than lock or chase transaction snapshots, re-deliver anything
-   * written in the last 30 seconds. Re-delivery is free because applyOp is
-   * idempotent, and 30s comfortably covers the gap between allocation and
-   * commit at our volume.
+   * So the cursor the client is allowed to keep never advances past the
+   * newest op old enough that everything before it has certainly committed
+   * (Netlify functions time out far under 30s, so an allocated transaction
+   * has committed or aborted by then). Rows younger than the watermark are
+   * still DELIVERED immediately — they just re-deliver on later polls until
+   * the watermark passes them. Re-delivery is free: applyOp is idempotent.
+   *
+   * Dropping the OR-clause also fixes pagination: a catch-up after an
+   * offline stretch used to re-include the last-30s rows on every page.
    */
+  const watermarkRows = (await db.sql`
+    select coalesce(max(seq), 0) as watermark
+    from ops
+    where created_at <= now() - interval '30 seconds'
+  `) as Array<{ watermark: number | string }>;
+  const watermark = Number(watermarkRows[0]?.watermark ?? 0);
+
   const rows = (await db.sql`
     select seq, op_id, entity, entity_id, field, value, ts, actor
     from ops
     where seq > ${since}
-       or created_at > now() - interval '30 seconds'
     order by seq asc
     limit ${MAX_OPS_PER_PULL}
   `) as Array<Record<string, unknown>>;
@@ -99,8 +113,10 @@ export default async (req: Request) => {
       `) as Array<{ person: string }>)
     : [];
 
+  const lastSeq = rows.length ? Number(rows[rows.length - 1].seq) : since;
   return json({
-    seq: rows.length ? Number(rows[rows.length - 1].seq) : since,
+    // The client may not advance past the watermark — young rows re-deliver.
+    seq: Math.max(since, Math.min(lastSeq, watermark)),
     ops: rows.map(r => ({
       opId: r.op_id,
       entity: r.entity,

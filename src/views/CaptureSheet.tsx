@@ -5,6 +5,7 @@ import { BigButton, ClientPill, HorizonChip } from '../design/bits';
 import { Icon } from '../design/icons';
 import { snap } from '../design/springs';
 import { createBullet } from '../data/mutations';
+import { db } from '../data/db';
 import { useClients } from '../data/store';
 import { addDays, today as todayFn } from '../lib/dates';
 import { HORIZONS, type Horizon } from '../data/types';
@@ -18,10 +19,12 @@ export function CaptureSheet({
   open,
   onClose,
   onSaved,
+  onError,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved?: (info: { title: string; horizon: Horizon }) => void;
+  onError?: (message: string) => void;
 }) {
   const clients = useClients();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -71,18 +74,34 @@ export function CaptureSheet({
     // device got through twice and created two bullets.
     if (!t || saving) return;
     setSaving(true);
-    await createBullet({
-      title: t,
-      horizon,
-      clientId,
-      deadline,
-      count: total && total > 1 ? { total, unit: unit.trim() || 'parts' } : undefined,
-    });
-    // A bullet captured with the default horizon lands on the Shelf, which is
-    // collapsed by client — easy to save something and never see it again.
-    onSaved?.({ title: t, horizon });
-    setSaving(false);
-    onClose();
+    try {
+      await createBullet({
+        title: t,
+        horizon,
+        clientId,
+        deadline,
+        count: total && total > 1 ? { total, unit: unit.trim() || 'parts' } : undefined,
+      });
+      onSaved?.({ title: t, horizon });
+      onClose();
+    } catch (err) {
+      /**
+       * A rejected save must not eat the capture. iPhone Safari closes the
+       * IndexedDB connection when a tab backgrounds and the next transaction
+       * throws DatabaseClosedError; before this, that wedged the button
+       * forever, showed nothing, and closing the sheet wiped the draft — a
+       * task the user firmly believes they saved. The sheet stays open, the
+       * draft stays typed, and one reopen attempt covers the Safari case.
+       */
+      try {
+        await db.open();
+      } catch {
+        /* stays closed — the retry below will surface it again */
+      }
+      onError?.(err instanceof Error ? err.message : 'Could not save');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const today = todayFn();

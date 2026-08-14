@@ -88,15 +88,26 @@ export function BulletZoom({
   // Already on today? Then offer to finish or remove it, never to add it again.
   const onToday = shots.find(s => s.scope === 'day' && s.date === today && s.state === 'open');
 
+  const [addingChild, setAddingChild] = useState(false);
   const addChild = async () => {
     const t = childTitle.trim();
-    if (!t) return;
-    await createBullet({
-      title: t,
-      parentId: bulletId,
-      clientId: bullet.clientId,
-    });
-    setChildTitle('');
+    // The in-flight guard matters as much as the catch: Enter auto-repeat on
+    // a slow device minted duplicate pieces, which sync to both phones and
+    // block completing the parent.
+    if (!t || addingChild) return;
+    setAddingChild(true);
+    try {
+      await createBullet({
+        title: t,
+        parentId: bulletId,
+        clientId: bullet.clientId,
+      });
+      setChildTitle('');
+    } catch {
+      // Keep the typed title; the user retries on the spot.
+    } finally {
+      setAddingChild(false);
+    }
   };
 
   return (

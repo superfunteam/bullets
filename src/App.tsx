@@ -21,7 +21,7 @@ import { useSelection } from './views/selection';
 import { restoreIdentity } from './sync/auth';
 import { startSync } from './sync/client';
 import { useHuddles } from './data/store';
-import { getActor } from './data/mutations';
+import { getActor, initClock } from './data/mutations';
 import { seedIfEmpty } from './data/seed';
 import { rollForwardNow } from './data/mutations';
 import { HORIZON_META, hasAnswered, type Person } from './data/types';
@@ -66,11 +66,17 @@ export function App() {
 
   useEffect(() => {
     if (!person) return;
-    void seedIfEmpty();
-    // NOW means today, so opening the app is enough to slot it in — including
-    // anything committed yesterday and never done.
-    void rollForwardNow();
-    startSync();
+    void (async () => {
+      // The clock seeds BEFORE anything writes: rollForwardNow mutates
+      // immediately, and a write stamped below an observed peer timestamp
+      // silently loses every comparison it enters.
+      await initClock();
+      await seedIfEmpty();
+      // NOW means today, so opening the app is enough to slot it in — including
+      // anything committed yesterday and never done.
+      await rollForwardNow();
+      startSync();
+    })();
 
     // Native-only. Both are no-ops on web.
     void (async () => {
@@ -288,6 +294,10 @@ export function App() {
       <CaptureSheet
         open={capturing}
         onClose={() => setCapturing(false)}
+        onError={message => {
+          setToast(`Not saved — ${message}. Try again.`);
+          setToastAction(null);
+        }}
         onSaved={({ horizon }) => {
           setToast(
             horizon === 'shelf'
