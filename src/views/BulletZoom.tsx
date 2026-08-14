@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BigButton, ClientPill, HorizonChip, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { settle, snap, zoom } from '../design/springs';
@@ -46,10 +46,28 @@ export function BulletZoom({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [childTitle, setChildTitle] = useState('');
 
+  /**
+   * The moment it finishes, once.
+   *
+   * Completing the last part used to be indistinguishable from completing the
+   * second-to-last: the same dot filled and nothing marked the difference. This
+   * pulses the grid exactly on the transition, so finishing something feels
+   * like finishing something.
+   */
+  const [finishedAt, setFinishedAt] = useState(0);
+  const wasDone = useRef(false);
+
   if (!bullet) return null;
 
   const client = clients.find((c) => c.id === bullet.clientId);
   const { done, total } = progressOf(bullet, shots);
+
+  // Fire on the open -> finished edge only, never on every render at 100%.
+  useEffect(() => {
+    const isDone = total > 0 && done >= total;
+    if (isDone && !wasDone.current) setFinishedAt(Date.now());
+    wasDone.current = isDone;
+  }, [done, total]);
   const tension = tensionOf(bullet, shots, today);
   const liveShots = shots.filter((s) => s.state !== 'done');
   // Already on today? Then offer to finish or remove it, never to add it again.
@@ -129,9 +147,15 @@ export function BulletZoom({
 
             {/* Progress as discrete blocks. A percentage bar invites arguing with it. */}
             {bullet.count && (
-              <section className="mt-8">
+              <motion.section
+                className="mt-8"
+                animate={finishedAt ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+                transition={settle}
+              >
                 <div className="flex items-baseline justify-between">
-                  <p className="meta text-[var(--ink-3)] uppercase">Progress</p>
+                  <p className="meta text-[var(--ink-3)] uppercase">
+                    {done >= total ? 'All done' : 'Progress'}
+                  </p>
                   <p className="meta text-[var(--ink-2)]">
                     <span className="numeral text-[var(--ink)]">{done}</span> of {total}{' '}
                     {bullet.count.unit}
@@ -153,20 +177,37 @@ export function BulletZoom({
                         onClick={() =>
                           void setCompletedCount(bullet.id, done === i + 1 ? i : i + 1)
                         }
-                        initial={{ scale: 0.4, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        whileTap={{ scale: 0.82 }}
-                        transition={{ ...snap, delay: Math.min(i * 0.012, 0.3) }}
-                        className="h-9 w-9 rounded-[10px]"
-                        style={{ background: filled ? 'var(--hit)' : 'var(--surface-2)' }}
-                      />
+                        whileTap={{ scale: 0.86 }}
+                        // No delay. The old transition carried a stagger of up
+                        // to 300ms and Motion applies a transition to EVERY
+                        // animation on the element — so the press feedback was
+                        // delayed too, and the whole grid replayed its entry
+                        // cascade on each re-render. That was the flicker.
+                        transition={snap}
+                        className="relative h-9 w-9 rounded-[10px]"
+                        style={{ background: 'var(--surface-2)' }}
+                      >
+                        {/* The fill is its own layer, scaled rather than
+                            colour-interpolated, so it stays on the compositor.
+                            initial={false} means dots that were already filled
+                            do not re-animate when a sibling changes — only the
+                            one you actually tapped moves. */}
+                        <motion.span
+                          aria-hidden
+                          className="absolute inset-0 rounded-[10px]"
+                          style={{ background: 'var(--hit)' }}
+                          initial={false}
+                          animate={{ scale: filled ? 1 : 0.5, opacity: filled ? 1 : 0 }}
+                          transition={snap}
+                        />
+                      </motion.button>
                     );
                   })}
                 </div>
                 <p className="meta mt-2 text-[var(--ink-3)]">
                   Tap a square to set how many are done.
                 </p>
-              </section>
+              </motion.section>
             )}
 
             {bullet.note && (
