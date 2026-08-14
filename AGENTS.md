@@ -130,6 +130,28 @@ app's side there was nothing outstanding. `durability.test.ts` fails the queue
 write on purpose to pin this; if you split those writes again, that test is the
 one that goes red.
 
+**The op log is FIELD level; history is ACTION level.** One tap of "Mark done"
+on a counted parent writes a dozen ops across several entities. The grouping key
+rides INSIDE `opId` as `${actionId}:${n}` — Postgres declares `op_id` as opaque
+text and round-trips it verbatim, so this needed no migration, no wire change
+and no deploy ordering across the three clients. The counter lives on the ACTION
+(`mutations.ts:runAction`/`runAuto`), never on the `mutate()` call: an action
+spans several `mutate()` calls, and a per-call counter would emit `${id}:0`
+twice, which `on conflict (op_id) do nothing` silently swallows. That is data
+loss, not a grouping bug.
+
+**Machine writes name no person.** `settleFromOps` derives completion on
+whichever device pulled first, and `sync.mts` stamps `actor` with the
+authenticated pusher — so a derived completion is durably credited to the wrong
+human. `runAuto` marks those, and history renders them as "Bullets …" with no
+initial. Never "fix" this by attributing them.
+
+**`HISTORY_HORIZON` is not `HORIZON_META`.** One is what you can PICK, the other
+is what you can READ, and the second has more answers: 'soon' and 'later' were
+retired without rewriting a row, so the log holds them forever. Its default arm
+is also forward compatibility — a phone one release behind must render a value
+it has never heard of rather than white-screen.
+
 **Clock skew between devices.** `mutations.ts` uses a hybrid logical clock that
 absorbs every timestamp it sees, local or remote. Without it, one phone running
 slightly fast permanently poisons a field: later edits from the other phone

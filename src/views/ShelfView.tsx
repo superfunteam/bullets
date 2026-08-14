@@ -45,9 +45,11 @@ function readOpen(): Set<string> {
 }
 
 export function ShelfView({
+  onOpenHistory,
   onZoom,
   onStartWeeklyPull,
 }: {
+  onOpenHistory?: () => void;
   onZoom: (id: string) => void;
   onStartWeeklyPull: () => void;
 }) {
@@ -168,7 +170,19 @@ export function ShelfView({
         </>
       )}
       <CompletedSection onZoom={onZoom} />
-    </div>
+    
+      {onOpenHistory && (
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          className="meta mt-10 flex min-h-[var(--tap)] w-full items-center justify-center gap-1
+                     text-[var(--ink-3)] uppercase"
+        >
+          History
+          <Icon name="chevron_right" size={16} />
+        </button>
+      )}
+</div>
   );
 }
 

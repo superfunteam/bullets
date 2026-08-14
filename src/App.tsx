@@ -16,6 +16,7 @@ import { PullDeck } from './views/PullDeck';
 import { SignIn } from './views/SignIn';
 import { Onboarding } from './views/Onboarding';
 import { BulkSheet } from './views/BulkSheet';
+import { HistoryView } from './views/HistoryView';
 import { useSelection } from './views/selection';
 import { restoreIdentity } from './sync/auth';
 import { startSync } from './sync/client';
@@ -29,7 +30,8 @@ type Overlay =
   | { kind: 'none' }
   | { kind: 'zoom'; bulletId: string }
   | { kind: 'pull'; mode: 'weekly' | 'daily' }
-  | { kind: 'huddle'; huddleId: string };
+  | { kind: 'huddle'; huddleId: string }
+  | { kind: 'history' };
 
 const ONBOARDED_KEY = 'bullets.onboarded';
 
@@ -122,7 +124,8 @@ export function App() {
       if (path.startsWith('/capture')) setCapturing(true);
       else if (path.startsWith('/huddle/')) {
         setOverlay({ kind: 'huddle', huddleId: path.split('/')[2] });
-      } else if (path.startsWith('/week')) setTab('week');
+      } else if (path.startsWith('/history')) setOverlay({ kind: 'history' });
+      else if (path.startsWith('/week')) setTab('week');
       else if (path.startsWith('/shelf')) setTab('shelf');
       else if (path.startsWith('/huddles')) setTab('huddles');
       else setTab('today');
@@ -264,6 +267,7 @@ export function App() {
           )}
           {tab === 'shelf' && (
             <ShelfView
+              onOpenHistory={() => setOverlay({ kind: 'history' })}
               onZoom={zoomTo}
               onStartWeeklyPull={() => setOverlay({ kind: 'pull', mode: 'weekly' })}
             />
@@ -316,6 +320,7 @@ export function App() {
         {overlay.kind === 'pull' && (
           <PullDeck key={`pull-${overlay.mode}`} mode={overlay.mode} onDone={closeOverlay} />
         )}
+        {overlay.kind === 'history' && <HistoryView key="history" onClose={closeOverlay} />}
         {overlay.kind === 'huddle' && (
           <HuddleBoard key={overlay.huddleId} huddleId={overlay.huddleId} onClose={closeOverlay} />
         )}
