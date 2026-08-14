@@ -57,10 +57,16 @@ export function BulletZoom({
   const [finishedAt, setFinishedAt] = useState(0);
   const wasDone = useRef(false);
 
-  if (!bullet) return null;
-
-  const client = clients.find((c) => c.id === bullet.clientId);
-  const { done, total } = progressOf(bullet, shots);
+  /**
+   * Computed BEFORE the early return, and the effect below runs unconditionally.
+   *
+   * `useBullet` is a live query: it returns undefined for the first render and
+   * the bullet on the next. Putting a hook after `if (!bullet) return null`
+   * therefore renders fewer hooks on the first pass than the second, which is
+   * React error #310 — and since this view only mounts when you tap a card, it
+   * meant tapping a card showed nothing at all.
+   */
+  const { done, total } = bullet ? progressOf(bullet, shots) : { done: 0, total: 0 };
 
   // Fire on the open -> finished edge only, never on every render at 100%.
   useEffect(() => {
@@ -68,6 +74,10 @@ export function BulletZoom({
     if (isDone && !wasDone.current) setFinishedAt(Date.now());
     wasDone.current = isDone;
   }, [done, total]);
+
+  if (!bullet) return null;
+
+  const client = clients.find((c) => c.id === bullet.clientId);
   const tension = tensionOf(bullet, shots, today);
   const liveShots = shots.filter((s) => s.state !== 'done');
   // Already on today? Then offer to finish or remove it, never to add it again.
