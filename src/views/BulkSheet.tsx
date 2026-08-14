@@ -161,6 +161,24 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
     // back — a swipe+undo round trip was erasing the progress recorded BEFORE
     // the swipe. progressOf before the action is the truth to return to.
     const shots = picked.shots.map(s => s.id);
+    /**
+     * Parents need their pieces snapshotted here too: completing a parent's
+     * shot completes every open child, and the undo's uncompleteShot only
+     * reopens the parent — its pieces stayed silently done.
+     */
+    const parentChildren = await Promise.all(
+      picked.bullets
+        .filter(b => !b.count)
+        .map(async b => ({
+          id: b.id,
+          openChildren: (await db.bullets.where('parentId').equals(b.id).toArray())
+            .filter(k => {
+              const kid = k as unknown as Bullet;
+              return !kid.deletedAt && kid.state === 'open';
+            })
+            .map(k => (k as unknown as Bullet).id),
+        })),
+    );
     const countedBefore = await Promise.all(
       picked.bullets
         .filter(b => b.count)
@@ -186,6 +204,9 @@ export function BulkSheet({ onToast }: { onToast: (message: string, undo?: Undo)
         runAction(async () => {
           for (const id of [...simpleShots].reverse()) await uncompleteShot(id);
           for (const c of countedBefore) await setCompletedCount(c.id, c.done);
+          for (const p of parentChildren) {
+            for (const kid of p.openChildren) await reopenBullet(kid);
+          }
         }),
     });
   };

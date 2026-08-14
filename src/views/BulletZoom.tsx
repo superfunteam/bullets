@@ -6,7 +6,7 @@ import { settle, snap, zoom } from '../design/springs';
 import { useDismissDrag } from '../design/useDismissDrag';
 import { Icon } from '../design/icons';
 import { progressOf, tensionOf, unclaimedOf } from '../data/selectors';
-import { useBullet, useChildren, useClients, useShotsFor } from '../data/store';
+import { groupShotsForDisplay, useBullet, useChildren, useClients, useShotsFor } from '../data/store';
 import {
   completeBullet,
   createBullet,
@@ -79,7 +79,12 @@ export function BulletZoom({
 
   const client = clients.find((c) => c.id === bullet.clientId);
   const tension = tensionOf(bullet, shots, today);
-  const liveShots = shots.filter((s) => s.state !== 'done');
+  // Folded for display: per-writer twins are one line, not the duplicates
+  // the cards elsewhere already hide.
+  const liveShots = groupShotsForDisplay(
+    shots.filter((s) => s.state !== 'done'),
+    Boolean(bullet?.count),
+  );
   // Already on today? Then offer to finish or remove it, never to add it again.
   const onToday = shots.find(s => s.scope === 'day' && s.date === today && s.state === 'open');
 

@@ -128,7 +128,7 @@ export function TodayView({
           <AnimatePresence mode="popLayout" initial={false}>
             {open.map((row, i) => (
               <ShotCard
-                key={row.shot.id}
+                key={row.groupId ?? row.shot.id}
                 row={row}
                 today={today}
                 onZoom={onZoom}
@@ -151,7 +151,7 @@ export function TodayView({
             <AnimatePresence mode="popLayout" initial={false}>
               {hit.map((row, i) => (
                 <ShotCard
-                  key={row.shot.id}
+                  key={row.groupId ?? row.shot.id}
                   row={row}
                   today={today}
                   index={i}

@@ -71,7 +71,13 @@ const EMPTY_CLIENTS: Client[] = [];
 const EMPTY_BULLETS: Bullet[] = [];
 const EMPTY_RANGE: Record<string, ShotRow[]> = {};
 
-export type ShotRow = { shot: Shot; bullet: Bullet; client?: Client };
+export type ShotRow = {
+  shot: Shot;
+  bullet: Bullet;
+  client?: Client;
+  /** Set when this row stands for a folded group; a stable render key. */
+  groupId?: string;
+};
 
 /**
  * One card per (bullet, date, state) — for EVERY bullet, not just counted.
@@ -90,6 +96,25 @@ export type ShotRow = { shot: Shot; bullet: Bullet; client?: Client };
  * - done  → NEWEST by ts, so tapping the struck card un-hits the most recent
  *   work first — undoing a swipe restores exactly what the swipe recorded.
  */
+
+/** Fold raw shots for display lists (the zoom's Lined up, the deck). */
+export function groupShotsForDisplay(shots: Shot[], counted: boolean): Shot[] {
+  const byKey = new Map<string, Shot[]>();
+  for (const s of shots) {
+    const key = `${s.scope}|${s.date}|${s.state}`;
+    const list = byKey.get(key);
+    if (list) list.push(s);
+    else byKey.set(key, [s]);
+  }
+  return [...byKey.values()].map(list => {
+    if (list.length === 1) return list[0];
+    const rep = [...list].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1))[0];
+    if (!counted) return rep;
+    const sum = list.reduce((n, s) => n + (s.amount ?? 1), 0);
+    return { ...rep, amount: sum };
+  });
+}
+
 export function groupCountedDayRows(rows: ShotRow[]): ShotRow[] {
   const out: ShotRow[] = [];
   const groups = new Map<string, ShotRow[]>();
@@ -118,13 +143,16 @@ export function groupCountedDayRows(rows: ShotRow[]): ShotRow[] {
           ? -1
           : 1,
     )[0];
+    const groupId = `${rep.bullet.id}|${rep.shot.date}|${rep.shot.state}`;
     if (list[0].bullet.count) {
       const sum = list.reduce((n, r) => n + (r.shot.amount ?? 1), 0);
-      // A display clone — the stored rows keep their own amounts.
-      out.push({ ...rep, shot: { ...rep.shot, amount: sum } });
+      // A display clone — the stored rows keep their own amounts. The card is
+      // keyed by the GROUP, so the representative changing when a peer row
+      // syncs in updates a mounted component instead of remounting the card.
+      out.push({ ...rep, groupId, shot: { ...rep.shot, amount: sum } });
     } else {
       // A simple bullet's duplicates carry no amounts; the card is just one.
-      out.push(rep);
+      out.push({ ...rep, groupId });
     }
   }
 
@@ -354,10 +382,22 @@ export function useCompleted(limit = 60): CompletedRow[] {
         // Pieces are shown inside their parent, not as separate entries.
         if (bullet.parentId) continue;
 
-        const shots = alive(await db.shots.where('bulletId').equals(bullet.id).toArray())
-          .map(s => clean<Shot>(s))
-          .filter(s => s.state === 'done')
-          .sort((a, b) => (a.date > b.date ? -1 : 1));
+        /**
+         * Day-scope records only, one chip per date. A flipped week ledger is
+         * bookkeeping, not work — it rendered a phantom chip on the week's
+         * Monday — and per-writer twins are one day's work, not two chips.
+         */
+        const byDate = new Map<string, { date: string; amount?: number }>();
+        for (const s of alive(await db.shots.where('bulletId').equals(bullet.id).toArray())
+          .map(x => clean<Shot>(x))
+          .filter(x => x.state === 'done' && x.scope === 'day')) {
+          const prior = byDate.get(s.date);
+          if (!prior) byDate.set(s.date, { date: s.date, amount: s.amount });
+          else if (s.amount !== undefined) {
+            prior.amount = (prior.amount ?? 0) + s.amount;
+          }
+        }
+        const shots = [...byDate.values()].sort((a, b) => (a.date > b.date ? -1 : 1));
 
         const kids = alive(await db.bullets.where('parentId').equals(bullet.id).toArray()).map(k =>
           clean<Bullet>(k),
@@ -371,7 +411,7 @@ export function useCompleted(limit = 60): CompletedRow[] {
           bullet,
           client: client && !client.deletedAt ? clean<Client>(client) : undefined,
           finished: stampOf(rec, 'state'),
-          log: shots.map(s => ({ date: s.date, amount: s.amount })),
+          log: shots,
           children: kids,
         });
       }

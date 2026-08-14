@@ -124,6 +124,16 @@ ten hit on each phone, left both holding 20 of 20 done with the bullet open
 forever. `settleFromOps()` runs after `applyLocal` in the sync client. If you
 add another way to finish work, it has to converge the same way.
 
+**Merged peer state needs REPAIR, not just settling.** Two devices racing
+produce merged rows no single device would ever write — a done+deleted shot, a
+done bullet holding a live open shot, a done parent with an open child. Each
+field landed correctly; the combination is nonsense; and nothing revisits it
+unless `repairMerged` (mutations.ts, run from settleFromOps on every batch of
+peer ops) makes the invariants hold over the MERGED rows. If you add a new
+state combination, add its repair there — both devices run it after ops land
+and the repairs are deterministic functions of the merged rows, so they
+converge. `repair.test.ts` builds the exact merged shapes the races produce.
+
 **Counted-bullet shots are PER-WRITER rows; one-card-per-day is a RENDER rule.**
 Never "simplify" by merging a day's shots into one row, folding duplicates, or
 incrementing another row's amount (pullTo deliberately does NOT merge counted

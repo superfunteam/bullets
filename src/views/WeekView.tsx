@@ -78,10 +78,17 @@ export function WeekView({
    * prompt with it — while the Daily Pull was still offering the bullet.
    */
   const pool = useMemo<PoolEntry[]>(() => {
-    /** Everything already drawn onto a day of this week, done or not. */
+    /**
+     * Everything already drawn onto a day of this week — OPEN rows only.
+     * Completion already nets finished work out of the open week claim at the
+     * mutation layer, so counting done day rows here subtracted the same work
+     * twice: outstanding understated and the pool row could vanish with work
+     * still owed.
+     */
     const drawn = new Map<string, number>();
     for (const day of days) {
       for (const row of byDay[day] ?? []) {
+        if (row.shot.state !== 'open') continue;
         drawn.set(row.bullet.id, (drawn.get(row.bullet.id) ?? 0) + (row.shot.amount ?? 1));
       }
     }
@@ -287,7 +294,7 @@ function DayBlock({
           <AnimatePresence mode="popLayout" initial={false}>
             {ordered.map((row, i) => (
               <ShotCard
-                key={row.shot.id}
+                key={row.groupId ?? row.shot.id}
                 row={row}
                 today={today}
                 onZoom={onZoom}

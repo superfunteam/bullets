@@ -79,8 +79,15 @@ async function cursor(): Promise<number> {
   return ((await db.meta.get('cursor'))?.value as number | undefined) ?? 0;
 }
 
+let rerunAfterFlight = false;
+
 export async function syncOnce(): Promise<void> {
-  if (inFlight) return;
+  if (inFlight) {
+    // A wake or a local write landed mid-request. Dropping it silently means
+    // the change waits a full poll interval; run one extra pass instead.
+    rerunAfterFlight = true;
+    return;
+  }
 
   // A device that signed in offline has an identity but no token. Retrying here
   // rather than giving up is what stops sync from silently never running.
@@ -105,6 +112,10 @@ export async function syncOnce(): Promise<void> {
           ops: sentOutbox ? [] : outgoing,
           context,
         }),
+        // A dead socket must reject, not hang: inFlight never clears while a
+        // request is pending, so a hung fetch silently wedges every future
+        // wake, nudge and pull-to-refresh until the app restarts.
+        signal: AbortSignal.timeout(15_000),
       });
 
       // A rotated BULLETS_SECRET invalidates tokens. Re-mint once rather than
@@ -147,6 +158,10 @@ export async function syncOnce(): Promise<void> {
     throw err;
   } finally {
     inFlight = false;
+    if (rerunAfterFlight && started) {
+      rerunAfterFlight = false;
+      void syncOnce().catch(() => {});
+    }
   }
 }
 
