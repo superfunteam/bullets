@@ -8,7 +8,7 @@ import { SyncPip } from './SyncPip';
 import { Empty, TensionBadge } from '../design/bits';
 import { Slab } from '../design/Slab';
 import { settle } from '../design/springs';
-import { useAllShots, useBullets, useHuddlesOn, useShotsOn, useWeekShots } from '../data/store';
+import { useShelf, useAllShots, useBullets, useHuddlesOn, useShotsOn, useWeekShots } from '../data/store';
 import { tensionOf } from '../data/selectors';
 import { relativeDay, shortDate, today as todayFn, weekdayName } from '../lib/dates';
 import type { Bullet, Shot } from '../data/types';
@@ -32,6 +32,7 @@ export function TodayView({
   const huddles = useHuddlesOn(today);
   const weekRows = useWeekShots(today);
   const allBullets = useBullets();
+  const shelf = useShelf();
   const allShots = useAllShots();
 
   const sel = useSelection();
@@ -113,9 +114,13 @@ export function TodayView({
               : 'Nothing on today, and nothing in the week.'
           }
           sub={
+            // The Weekly Pull is no longer a prerequisite, so stop telling
+            // people it is: the Daily Pull reaches the Shelf on its own.
             weekRows.length > 0
               ? 'Run the Daily Pull to pick from this week.'
-              : 'Start with the Weekly Pull from the Shelf.'
+              : shelf.length > 0
+                ? 'Run the Daily Pull to pick straight from the Shelf.'
+                : 'Add a bullet to get going.'
           }
         />
       ) : (
@@ -158,7 +163,11 @@ export function TodayView({
         </section>
       )}
 
-      {weekRows.length > 0 && open.length === 0 && (
+      {/* Offered whenever there is anything to draw from — the week OR the
+          Shelf. Gating this on the week made the Weekly Pull a prerequisite:
+          skip it on Monday and this card never appeared all week, with a full
+          Shelf sitting one tab away. */}
+      {weekRows.length + shelf.length > 0 && open.length === 0 && (
         <motion.button
           type="button"
           onClick={onStartDailyPull}
@@ -170,7 +179,15 @@ export function TodayView({
           <Slab tone="sunken" className="px-6 py-7 text-center" interactive>
             <p className="display text-2xl text-[var(--ink)]">Run the Daily Pull</p>
             <p className="meta mt-2 text-[var(--ink-3)]">
-              <span className="numeral">{weekRows.length}</span> waiting in this week
+              {weekRows.length > 0 ? (
+                <>
+                  <span className="numeral">{weekRows.length}</span> waiting in this week
+                </>
+              ) : (
+                <>
+                  <span className="numeral">{shelf.length}</span> waiting on the Shelf
+                </>
+              )}
             </p>
           </Slab>
         </motion.button>

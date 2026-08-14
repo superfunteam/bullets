@@ -1,8 +1,8 @@
-import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'motion/react';
+import { useMemo } from 'react';
 import { Slab } from '../design/Slab';
 import { BigButton, Empty, HorizonChip, SelectionMark, TensionBadge } from '../design/bits';
-import { settle, snap, stagger } from '../design/springs';
+import { settle, stagger } from '../design/springs';
 import { Icon } from '../design/icons';
 import { byUrgency, tensionOf } from '../data/selectors';
 import { useAllShots, useClients, useShelf } from '../data/store';
@@ -20,7 +20,6 @@ import { useSelection } from './selection';
  * one client and look it in the eye. Both of those start with a shut drawer.
  */
 
-const OPEN_KEY = 'bullets.shelfOpen';
 const NO_CLIENT = '~none';
 
 /** One identity for "no shots", so the grouping memo isn't churned by a literal. */
@@ -30,19 +29,6 @@ type Tension = ReturnType<typeof tensionOf>;
 type Row = { bullet: Bullet; tension: Tension };
 type Group = { key: string; name: string; hue?: number; rows: Row[] };
 
-function readOpen(): Set<string> {
-  try {
-    const raw = localStorage.getItem(OPEN_KEY);
-    if (!raw) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    return new Set(
-      Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === 'string') : [],
-    );
-  } catch {
-    // Unreadable or unavailable storage just means everything starts shut.
-    return new Set();
-  }
-}
 
 export function ShelfView({
   onOpenHistory,
@@ -74,25 +60,6 @@ export function ShelfView({
     }
     return map;
   }, [allShots]);
-
-  const [open, setOpen] = useState<Set<string>>(readOpen);
-  useEffect(() => {
-    try {
-      localStorage.setItem(OPEN_KEY, JSON.stringify([...open]));
-    } catch {
-      // Forgetting which drawers were open is survivable.
-    }
-  }, [open]);
-
-  const toggle = (key: string) => {
-    setOpen(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const groups = useMemo<Group[]>(() => {
     const clientById = new Map(clients.map(c => [c.id, c] as const));
     const buckets = new Map<string, Group>();
@@ -155,16 +122,9 @@ export function ShelfView({
             </BigButton>
           </motion.div>
 
-          <div className="space-y-3">
+          <div className="space-y-8">
             {groups.map((group, i) => (
-              <ClientDrawer
-                key={group.key}
-                group={group}
-                index={i}
-                open={open.has(group.key)}
-                onToggle={() => toggle(group.key)}
-                onZoom={onZoom}
-              />
+              <ClientGroup key={group.key} group={group} index={i} onZoom={onZoom} />
             ))}
           </div>
         </>
@@ -186,90 +146,60 @@ export function ShelfView({
   );
 }
 
-function ClientDrawer({
+/**
+ * A client, as a heading over its bullets.
+ *
+ * This used to be a collapsible drawer: a full Slab button with a chevron, and
+ * the rows hidden behind it and indented. That meant the Shelf — the screen
+ * whose entire job is showing you what you have not decided on — opened
+ * showing you nothing but client names, and every bullet cost a tap to reach.
+ *
+ * The client is a label for the rows beneath it, so it is typeset as one:
+ * quiet, small, and out of the way. The rows sit at full width, at the same
+ * text origin as every other list in the app.
+ */
+function ClientGroup({
   group,
   index,
-  open,
-  onToggle,
   onZoom,
 }: {
   group: Group;
   index: number;
-  open: boolean;
-  onToggle: () => void;
   onZoom: (id: string) => void;
 }) {
   return (
     <motion.section
-      // Position, never size. A plain `layout` animates the drawer's own height
-      // as a scale, and everything inside it — the client name, the count —
-      // rides that scale and visibly stretches on every open and close. The
-      // drawer's height is allowed to snap; what has to be smooth is the
-      // drawers below it sliding down, which is a position change.
       layout="position"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      // The stagger belongs to the first reveal only. Left on the layout
-      // animation it delays the drawers below a toggle, so the stack answers
-      // the tap late.
       transition={{ ...settle, delay: stagger(index), layout: settle }}
     >
-      <motion.button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        whileTap={{ scale: 0.985 }}
-        transition={snap}
-        className="w-full"
-      >
-        <Slab tone={open ? 'default' : 'quiet'} interactive>
-          <div className="flex min-h-[var(--tap)] items-center gap-3.5 px-5 py-4 pl-7">
-            <motion.span
-              aria-hidden
-              animate={{ rotate: open ? 90 : 0 }}
-              transition={snap}
-              className="inline-flex shrink-0 text-[var(--ink-3)]"
-            >
-              <Icon name="chevron_right" size={18} />
-            </motion.span>
-            {group.hue !== undefined ? (
-              <span
-                aria-hidden
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: `oklch(60% 0.16 ${group.hue})` }}
-              />
-            ) : (
-              <span
-                aria-hidden
-                className="h-2.5 w-2.5 shrink-0 rounded-full border border-[var(--line-strong)]"
-              />
-            )}
-            <span className="display min-w-0 flex-1 truncate text-left text-2xl text-[var(--ink)]">
-              {group.name}
-            </span>
-            <span className="numeral shrink-0 text-xl text-[var(--ink-3)]">
-              {group.rows.length}
-            </span>
-          </div>
-        </Slab>
-      </motion.button>
-
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="rows"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={settle}
-            className="mt-2.5 space-y-2.5 pl-3"
-          >
-            {group.rows.map(row => (
-              <ShelfRow key={row.bullet.id} row={row} onZoom={onZoom} />
-            ))}
-          </motion.div>
+      <div className="mb-2.5 flex items-center gap-2.5 px-1">
+        {group.hue !== undefined ? (
+          <span
+            aria-hidden
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: `oklch(60% 0.16 ${group.hue})` }}
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="h-2 w-2 shrink-0 rounded-full border border-[var(--line-strong)]"
+          />
         )}
-      </AnimatePresence>
+        <h2 className="meta min-w-0 flex-1 truncate uppercase text-[var(--ink-3)]">
+          {group.name}
+        </h2>
+        <span className="meta numeral shrink-0 text-[var(--ink-3)]">{group.rows.length}</span>
+      </div>
+
+      {/* No indent. The rows share the leading edge with Today and Week, so the
+          selection marks line up down the whole app. */}
+      <div className="space-y-2.5">
+        {group.rows.map(row => (
+          <ShelfRow key={row.bullet.id} row={row} onZoom={onZoom} />
+        ))}
+      </div>
     </motion.section>
   );
 }

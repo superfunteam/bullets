@@ -118,6 +118,8 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
 
   const candidates = useMemo<DeckItem[]>(() => {
     const pool = new Map<string, Bullet>();
+    /** Daily only: bullets this week already committed to, which lead the deck. */
+    const weekFirst = new Set<string>();
 
     if (weekly) {
       for (const b of shelf) if (!b.parentId) pool.set(b.id, b);
@@ -157,11 +159,33 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
         }
       }
     } else {
+      /**
+       * The week first, then the Shelf.
+       *
+       * The daily deck used to offer ONLY what the Weekly Pull had already
+       * committed, which made the weekly a gate: skip it on Monday and the
+       * daily deck is empty all week, with a full Shelf sitting right there.
+       * Two rituals, and one of them silently disabled the other.
+       *
+       * So the Shelf is offered too, after the week. Order matters and is not
+       * cosmetic: what you decided on Sunday should still be what you are asked
+       * about first, and the Shelf is the tail you reach only if you keep
+       * going. `weekFirst` carries that through the sort.
+       */
       const alreadyToday = new Set(dayRows.map(r => r.bullet.id));
+
       for (const row of weekRows) {
         if (row.shot.state !== 'open' || row.bullet.state !== 'open') continue;
         if (alreadyToday.has(row.bullet.id)) continue;
         pool.set(row.bullet.id, row.bullet);
+        weekFirst.add(row.bullet.id);
+      }
+
+      for (const b of shelf) {
+        // Sub-bullets live inside their parent, same rule as the weekly deck.
+        if (b.parentId || b.state !== 'open') continue;
+        if (alreadyToday.has(b.id) || pool.has(b.id)) continue;
+        pool.set(b.id, b);
       }
     }
 
@@ -170,7 +194,15 @@ export function PullDeck({ mode, onDone }: { mode: 'weekly' | 'daily'; onDone: (
         bullet,
         tension: tensionOf(bullet, shotsByBullet.get(bullet.id) ?? [], today),
       }))
-      .sort(byUrgency)
+      .sort((a, b) => {
+        // Week commitments lead; the Shelf follows. Within each, urgency.
+        if (!weekly) {
+          const aw = weekFirst.has(a.bullet.id) ? 0 : 1;
+          const bw = weekFirst.has(b.bullet.id) ? 0 : 1;
+          if (aw !== bw) return aw - bw;
+        }
+        return byUrgency(a, b);
+      })
       .map(({ bullet, tension }) => ({
         bullet,
         tension,
