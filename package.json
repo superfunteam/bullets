@@ -1,7 +1,7 @@
 {
   "name": "bullets",
   "private": true,
-  "version": "1.6.3",
+  "version": "1.6.4",
   "type": "module",
   "description": "Bullets — No more dodging. A two-person, deadline-first bullet journal for Superfun.",
   "author": "Superfun",
@@ -19,7 +19,8 @@
     "mac:dev": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron .",
     "mac:pack": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --dir --mac",
     "mac:demo": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac zip --universal --publish never --config.mac.identity=null --config.mac.hardenedRuntime=false --config.directories.output=demo-release",
-    "mac:dist": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac --universal"
+    "mac:dist": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac --universal",
+    "lint": "eslint src"
   },
   "build": {
     "appId": "team.superfun.bullets",
@@ -80,10 +81,13 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@typescript-eslint/parser": "^8.67.0",
     "@vitejs/plugin-react": "^6.0.5",
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4.3.3",

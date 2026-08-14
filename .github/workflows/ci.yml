@@ -20,6 +20,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Catches hooks placed after an early return — a class tsc cannot see and
+      # the tests never mount. One such bug reached production.
+      - run: npm run lint
       - run: npm test
       - run: npm run build
 

@@ -60,7 +60,8 @@ export function __resetQueryCache(): void {
 }
 
 function useCached<T>(key: string, querier: () => Promise<T>, fallback: T): T {
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- key IS the dep set
+  // `key` is the whole dep set by construction — it must contain every value
+  // the querier closes over, or you serve one day's rows for another.
   return useObservable(() => cachedQuery(key, querier), [key]) ?? fallback;
 }
 
