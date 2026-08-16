@@ -19,7 +19,7 @@ import { BulkSheet } from './views/BulkSheet';
 import { HistoryView } from './views/HistoryView';
 import { useSelection } from './views/selection';
 import { restoreIdentity } from './sync/auth';
-import { startSync } from './sync/client';
+import { onSyncState, startSync } from './sync/client';
 import { useHuddles } from './data/store';
 import { getActor, initClock } from './data/mutations';
 import { seedIfEmpty } from './data/seed';
@@ -76,6 +76,19 @@ export function App() {
       // anything committed yesterday and never done.
       await rollForwardNow();
       startSync();
+
+      /**
+       * And again once the first sync has landed. On a fresh device — or any
+       * launch where the pull brings work down after boot — the boot-time
+       * roll-forward ran against an empty database and did nothing, leaving
+       * yesterday's NOW cards stranded on yesterday until the next launch.
+       * Found in the live data: open shots dated two days back.
+       */
+      const settleOnce = onSyncState(s => {
+        if (s.status !== 'ok') return;
+        settleOnce();
+        void rollForwardNow();
+      });
     })();
 
     // Native-only. Both are no-ops on web.

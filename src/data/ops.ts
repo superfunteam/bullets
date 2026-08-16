@@ -37,6 +37,27 @@ export type Materialized = AnyEntity & {
  * order yields the same result on every device. That property is what makes
  * the live Huddle board safe without CRDTs.
  */
+/**
+ * How far ahead of this device's clock a timestamp may be and still be
+ * believed. Generous — a day covers any real skew between two phones — and
+ * enormous compared to the corruption it exists to reject.
+ */
+const SANE_FUTURE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A timestamp no honest clock produced.
+ *
+ * Real corruption, found in production: 58 ops carrying ts 1e13 — the year
+ * 2286. Every later, real write lost last-write-wins against them, so a task
+ * marked done by BOTH people six times stayed open forever. Nothing in the app
+ * could ever beat it, because beating it means writing an even more absurd
+ * timestamp and poisoning the field permanently.
+ *
+ * Both devices judge this against their own clock, but the gap between a real
+ * write and a poisoned one is measured in centuries, so they always agree.
+ */
+export const isAbsurdTs = (ts: number): boolean => ts > Date.now() + SANE_FUTURE_MS;
+
 export function applyOp(rec: Materialized | undefined, op: Op): Materialized {
   const base: Materialized =
     rec ??
@@ -58,6 +79,29 @@ export function applyOp(rec: Materialized | undefined, op: Op): Materialized {
   };
 
   const seenTs = base._ts[op.field];
+
+  /**
+   * A believable timestamp always beats an absurd one, whatever the numbers
+   * say. This is the ONLY escape from a poisoned field: without it, the only
+   * way to overwrite a year-2286 op is to write year 2287, and the field stays
+   * unusable forever on every device that ever syncs it.
+   */
+  const storedAbsurd = seenTs !== undefined && isAbsurdTs(seenTs);
+  const incomingAbsurd = isAbsurdTs(op.ts);
+  if (storedAbsurd && !incomingAbsurd) {
+    return {
+      ...base,
+      ...envelope,
+      [op.field]: op.value,
+      _ts: { ...base._ts, [op.field]: op.ts },
+      _op: { ...base._op, [op.field]: op.opId },
+      _by: { ...base._by, [op.field]: op.actor },
+    };
+  }
+  if (incomingAbsurd && !storedAbsurd && seenTs !== undefined) {
+    return { ...base, ...envelope };
+  }
+
   const loses =
     seenTs !== undefined &&
     (op.ts < seenTs ||

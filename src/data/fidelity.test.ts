@@ -6,6 +6,7 @@ import {
   mutate,
   rollForwardNow,
   setTitle,
+  settleFromOps,
 } from './mutations';
 import { applyLocal } from './mutations';
 import { clean } from './ops';
@@ -25,6 +26,9 @@ const shotsOf = async (id: string) =>
 
 beforeEach(async () => {
   for (const t of db.tables) await t.clear();
+  // Per-test clock isolation: the skew one test legitimately absorbs would
+  // otherwise inflate every later test's writes.
+  __resetClockForTests();
 });
 
 describe('crash-safe capture ordering', () => {
@@ -112,5 +116,110 @@ describe('the clock survives a restart', () => {
      * the width of the skew.
      */
     expect((await read(id)).title).toBe('Post-restart tap');
+  });
+});
+
+describe('poisoned timestamps cannot lock a field forever', () => {
+  /**
+   * Straight from production. "Call Ant Guy" carried a `state: "open"` op
+   * stamped 10000000000025 — the year 2286 — so all SIX later "done" writes,
+   * four from Clark and two from Angie, lost last-write-wins to it. The task
+   * could not be marked done by anyone, on any device, ever.
+   */
+  const POISON = 10_000_000_000_025;
+
+  it('a real write beats a year-2286 write', async () => {
+    const id = await createBullet({ title: 'Call Ant Guy' });
+
+    await applyLocal([
+      {
+        opId: 'poison:0',
+        entity: 'bullet',
+        entityId: id,
+        field: 'state',
+        value: 'open',
+        ts: POISON,
+        actor: 'clark',
+      },
+    ]);
+
+    // An honest completion, stamped now.
+    await applyLocal([
+      {
+        opId: 'honest:0',
+        entity: 'bullet',
+        entityId: id,
+        field: 'state',
+        value: 'done',
+        ts: Date.now(),
+        actor: 'angie',
+      },
+    ]);
+
+    expect((await read(id)).state).toBe('done');
+  });
+
+  it('refuses to adopt an absurd clock, so the poison cannot spread', async () => {
+    const id = await createBullet({ title: 'Victim' });
+    await applyLocal([
+      {
+        opId: 'poison:1',
+        entity: 'bullet',
+        entityId: id,
+        field: 'title',
+        value: 'Poisoned',
+        ts: POISON,
+        actor: 'clark',
+      },
+    ]);
+
+    // The next local write must be stamped from the real clock. Before this,
+    // observeTs absorbed the 2286 stamp and every subsequent write on the
+    // device was dated 2286 — outranking every honest write on both phones.
+    await setTitle(id, 'Written now');
+    const row = (await db.bullets.get(id))!;
+    expect(row._ts.title).toBeLessThan(Date.now() + 60_000);
+    expect((await read(id)).title).toBe('Written now');
+  });
+
+  it('an absurd op cannot overwrite a sane one', async () => {
+    const id = await createBullet({ title: 'Real title' });
+    await applyLocal([
+      {
+        opId: 'poison:2',
+        entity: 'bullet',
+        entityId: id,
+        field: 'title',
+        value: 'From 2286',
+        ts: POISON,
+        actor: 'angie',
+      },
+    ]);
+    expect((await read(id)).title).toBe('Real title');
+  });
+});
+
+describe('a completion that lost still lands', () => {
+  it('repairs an open bullet whose every shot is done', async () => {
+    // The production shape: three done day shots, bullet stuck open because
+    // its state field was pinned by a poisoned timestamp.
+    const id = await createBullet({ title: 'Call Ant Guy', horizon: 'now' });
+    const shots = await shotsOf(id);
+    for (const s of shots) await mutate('shot', s.id, { state: 'done' });
+    await mutate('bullet', id, { state: 'open' });
+
+    await settleFromOps([
+      {
+        opId: 'touch:0',
+        entity: 'bullet',
+        entityId: id,
+        field: 'state',
+        value: 'open',
+        ts: Date.now(),
+        actor: 'clark',
+      },
+    ]);
+
+    expect((await read(id)).state).toBe('done');
   });
 });

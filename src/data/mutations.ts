@@ -1,5 +1,5 @@
 import { db, TABLES, ENTITY_TABLES } from './db';
-import { applyOp, type Materialized, type Op } from './ops';
+import { applyOp, isAbsurdTs, type Materialized, type Op } from './ops';
 import { enqueue } from './outbox';
 import { recordOps } from './historyLog';
 import { newId } from '../lib/id';
@@ -104,11 +104,24 @@ export async function initClock(): Promise<void> {
 function nextTs(): number {
   const now = Date.now();
   lastTs = now > lastTs ? now : lastTs + 1;
+  // Belt and braces: even a poisoned lastTs cannot make us emit a stamp
+  // nobody can ever beat.
+  if (isAbsurdTs(lastTs)) lastTs = now;
   return lastTs;
 }
 
-/** Advance the clock past a timestamp observed from anywhere. */
+/**
+ * Advance the clock past a timestamp observed from anywhere — unless it is
+ * absurd.
+ *
+ * This is how the poison spread: one device absorbed a year-2286 stamp, and
+ * from then on `nextTs` returned lastTs+1 forever, so EVERY write that device
+ * made was dated 2286 and outranked every honest write on both phones. 58 ops
+ * in production carry those stamps. A clock that trusts anything can be
+ * hijacked by one bad row.
+ */
 function observeTs(ts: number): void {
+  if (isAbsurdTs(ts)) return;
   if (ts > lastTs) lastTs = ts;
 }
 
@@ -1019,6 +1032,20 @@ async function repairMerged(bulletId: string): Promise<void> {
       if (s.state !== 'open') continue;
       if (shape === 'counted') await mutate('shot', s.id, { amount: 0, deletedAt: Date.now() });
       else await mutate('shot', s.id, { state: 'done' });
+    }
+  }
+
+  /**
+   * Every live shot done but the bullet still open means the completion
+   * happened and the BULLET write was the one that lost — the poisoned-clock
+   * shape found in production, and the same shape an app kill mid-swipe
+   * leaves. A reopen flips shots back open, so this can never fire against a
+   * deliberate reopen.
+   */
+  if (shape !== 'counted' && bullet.state === 'open') {
+    const rows = await liveShotsFor(bulletId);
+    if (rows.length > 0 && rows.every(s => s.state === 'done')) {
+      await mutate('bullet', bulletId, { state: 'done' });
     }
   }
 
