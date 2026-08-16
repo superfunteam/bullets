@@ -7,6 +7,7 @@ import {
   rollForwardNow,
   setTitle,
   settleFromOps,
+  healPoisonedClocks,
 } from './mutations';
 import { applyLocal } from './mutations';
 import { clean } from './ops';
@@ -221,5 +222,64 @@ describe('a completion that lost still lands', () => {
     ]);
 
     expect((await read(id)).state).toBe('done');
+  });
+});
+
+describe('healing rows already poisoned', () => {
+  const POISON = 10_000_000_000_025;
+
+  it('un-pins a stuck field and re-derives the truth', async () => {
+    /**
+     * The state two devices actually diverged on: the row is ALREADY
+     * materialized with a year-2286 clock, and no further op is coming for it
+     * — the cursor is long past. applyOp's absurd-loses rule decides future
+     * ops and does nothing here, so without an active heal the device shows
+     * the wrong status forever while the other device shows the right one.
+     */
+    const id = await createBullet({ title: 'Call Ant Guy', horizon: 'now' });
+    for (const s of await shotsOf(id)) await mutate('shot', s.id, { state: 'done' });
+
+    /**
+     * Written STRAIGHT to the table, not through applyOp: the new rule blocks
+     * a poisoned op from landing at all, so this is the only way to reproduce
+     * what a device poisoned BEFORE the fix already holds on disk — which is
+     * precisely the case the heal exists for.
+     */
+    const rec = (await db.bullets.get(id))!;
+    await db.bullets.put({
+      ...rec,
+      state: 'open',
+      _ts: { ...rec._ts, state: POISON },
+      _op: { ...rec._op, state: 'poison:state' },
+    } as never);
+    expect((await read(id)).state).toBe('open');
+
+    const healed = await healPoisonedClocks();
+
+    expect(healed).toBeGreaterThan(0);
+    expect((await read(id)).state).toBe('done');
+    // And the clock is real again, so the field is editable by anyone.
+    const row = (await db.bullets.get(id))!;
+    expect(row._ts.state).toBeLessThan(Date.now() + 60_000);
+  });
+
+  it('un-pins a poisoned field without inventing a new value', async () => {
+    const id = await createBullet({ title: 'Real title' });
+    const rec = (await db.bullets.get(id))!;
+    await db.bullets.put({
+      ...rec,
+      title: 'Pinned title',
+      _ts: { ...rec._ts, title: POISON },
+      _op: { ...rec._op, title: 'poison:title' },
+    } as never);
+
+    await healPoisonedClocks();
+
+    const row = (await db.bullets.get(id))!;
+    expect(row._ts.title).toBeLessThan(Date.now() + 60_000);
+    // The value it was pinned at is preserved; only the clock is repaired, so
+    // a later edit from either device can win normally.
+    await setTitle(id, 'Edited after heal');
+    expect((await read(id)).title).toBe('Edited after heal');
   });
 });

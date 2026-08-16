@@ -1,5 +1,5 @@
 import { db, TABLES, ENTITY_TABLES } from './db';
-import { applyOp, isAbsurdTs, type Materialized, type Op } from './ops';
+import { applyOp, clean, isAbsurdTs, type Materialized, type Op } from './ops';
 import { enqueue } from './outbox';
 import { recordOps } from './historyLog';
 import { newId } from '../lib/id';
@@ -494,6 +494,92 @@ async function materializeClaims(bulletId: string, total: number): Promise<void>
     await mutate('shot', s.id, { amount: claim });
     available = Math.max(0, available - claim);
   }
+}
+
+
+/**
+ * Write a field with a sane timestamp EVEN IF the value is unchanged.
+ *
+ * mutate() skips no-op writes, which is right everywhere else and useless
+ * here: un-pinning a poisoned field means replacing its clock, not its value.
+ */
+async function reassert(
+  entity: EntityKind,
+  entityId: string,
+  field: string,
+  value: unknown,
+): Promise<void> {
+  const ts = nextTs();
+  const ops: Op[] = [{ opId: nextOpId(), entity, entityId, field, value, ts, actor }];
+  await db.transaction('rw', [...ENTITY_TABLES, db.history, db.outbox], async () => {
+    await applyLocal(ops);
+    await enqueue(ops);
+  });
+  notify();
+}
+
+/**
+ * Heal rows whose per-field clock is absurd.
+ *
+ * The absurd-loses rule in applyOp only decides FUTURE ops. It does nothing
+ * for a row already materialized with a year-2286 clock: no new op is coming
+ * for it (the cursor is long past), so the field stays pinned forever and the
+ * device shows the wrong status indefinitely. That is why two devices on
+ * different builds disagree — each materialized the same log under different
+ * rules, and neither will revisit it.
+ *
+ * So every device actively re-asserts poisoned fields with a real timestamp.
+ * For `state` the value is re-derived rather than preserved: a simple bullet
+ * whose every live shot is done IS done, and preserving the pinned 'open'
+ * would just re-pin the wrong answer.
+ *
+ * Runs at boot BEFORE rollForwardNow — otherwise roll-forward mints a fresh
+ * open shot for the stuck bullet first, the derivation no longer sees an
+ * all-done set, and the task reappears as open every single morning.
+ */
+export function healPoisonedClocks(): Promise<number> {
+  return runAuto(() => healPoisonedClocksCore());
+}
+
+async function healPoisonedClocksCore(): Promise<number> {
+  let healed = 0;
+
+  for (const rec of await db.bullets.toArray()) {
+    const stamps = (rec._ts ?? {}) as Record<string, number>;
+    const poisoned = Object.keys(stamps).filter(f => isAbsurdTs(Number(stamps[f])));
+    if (!poisoned.length) continue;
+
+    const bullet = clean<Bullet>(rec);
+    for (const field of poisoned) {
+      let value = (bullet as unknown as Record<string, unknown>)[field];
+
+      if (field === 'state' && !bullet.deletedAt && bullet.state !== 'done') {
+        const kids = await childrenOf(bullet.id);
+        const shots = await liveShotsFor(bullet.id);
+        const allKidsDone = kids.length > 0 && kids.every(k => k.state === 'done');
+        const allShotsDone = shots.length > 0 && shots.every(s => s.state === 'done');
+        if (allKidsDone || (kids.length === 0 && !bullet.count && allShotsDone)) {
+          value = 'done';
+        }
+      }
+
+      await reassert('bullet', bullet.id, field, value);
+      healed += 1;
+    }
+  }
+
+  for (const rec of await db.shots.toArray()) {
+    const stamps = (rec._ts ?? {}) as Record<string, number>;
+    const poisoned = Object.keys(stamps).filter(f => isAbsurdTs(Number(stamps[f])));
+    if (!poisoned.length) continue;
+    const shot = clean<Shot>(rec);
+    for (const field of poisoned) {
+      await reassert('shot', shot.id, field, (shot as unknown as Record<string, unknown>)[field]);
+      healed += 1;
+    }
+  }
+
+  return healed;
 }
 
 /** Live, undeleted children of a bullet. */

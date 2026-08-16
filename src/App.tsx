@@ -21,7 +21,7 @@ import { useSelection } from './views/selection';
 import { restoreIdentity } from './sync/auth';
 import { onSyncState, startSync } from './sync/client';
 import { useHuddles } from './data/store';
-import { getActor, initClock } from './data/mutations';
+import { getActor, healPoisonedClocks, initClock } from './data/mutations';
 import { seedIfEmpty } from './data/seed';
 import { rollForwardNow } from './data/mutations';
 import { HORIZON_META, hasAnswered, type Person } from './data/types';
@@ -72,6 +72,10 @@ export function App() {
       // silently loses every comparison it enters.
       await initClock();
       await seedIfEmpty();
+      // BEFORE rollForwardNow: a stuck bullet must be re-derived while its
+      // shots are still all done, or roll-forward mints a fresh open one and
+      // the task reappears open every morning.
+      await healPoisonedClocks();
       // NOW means today, so opening the app is enough to slot it in — including
       // anything committed yesterday and never done.
       await rollForwardNow();
@@ -87,7 +91,12 @@ export function App() {
       const settleOnce = onSyncState(s => {
         if (s.status !== 'ok') return;
         settleOnce();
-        void rollForwardNow();
+        // Peer rows arrive after boot, and a poisoned one among them needs the
+        // same heal — again before the roll-forward that would mask it.
+        void (async () => {
+          await healPoisonedClocks();
+          await rollForwardNow();
+        })();
       });
     })();
 
