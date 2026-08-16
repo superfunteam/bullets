@@ -1,7 +1,7 @@
 {
   "name": "bullets",
   "private": true,
-  "version": "1.8.0",
+  "version": "1.8.1",
   "type": "module",
   "description": "Bullets — No more dodging. A two-person, deadline-first bullet journal for Superfun.",
   "author": "Superfun",
@@ -20,7 +20,8 @@
     "mac:pack": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --dir --mac",
     "mac:demo": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac zip --universal --publish never --config.mac.identity=null --config.mac.hardenedRuntime=false --config.directories.output=demo-release",
     "mac:dist": "VITE_DESKTOP=1 npm run build && npm run build:electron && electron-builder --mac --universal",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "build": {
     "appId": "team.superfun.bullets",

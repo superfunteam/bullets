@@ -44,6 +44,8 @@ export function BulletZoom({
   const { controls, scrollRef, handleProps, contentProps } = useDismissDrag();
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Above the early return: every hook must run on every render.
+  const [addingChild, setAddingChild] = useState(false);
   const [childTitle, setChildTitle] = useState('');
 
   /**
@@ -88,7 +90,6 @@ export function BulletZoom({
   // Already on today? Then offer to finish or remove it, never to add it again.
   const onToday = shots.find(s => s.scope === 'day' && s.date === today && s.state === 'open');
 
-  const [addingChild, setAddingChild] = useState(false);
   const addChild = async () => {
     const t = childTitle.trim();
     // The in-flight guard matters as much as the catch: Enter auto-repeat on

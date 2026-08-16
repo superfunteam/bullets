@@ -1,0 +1,6 @@
+#!/bin/sh
+# The hooks lint catches a class that typechecks, passes every test, and takes
+# the app down: a hook after an early return (React #310). It has now shipped
+# TWICE — both times because the check existed and was not run before the
+# final commit. Make it impossible to forget.
+exec npx eslint src
