@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { db, ENTITY_TABLES } from '../data/db';
 import { enqueue, pending } from '../data/outbox';
-import { setPace, startSync, stopSync, syncOnce, currentInterval, presence, syncState } from './client';
+import {
+  __resetSyncForTests,
+  setPace,
+  startSync,
+  stopSync,
+  syncOnce,
+  currentInterval,
+  presence,
+  syncState,
+} from './client';
 import type { Op } from '../data/ops';
 
 const op = (over: Partial<Op> = {}): Op => ({
@@ -37,6 +46,9 @@ function stubSync(pages: { seq: number; ops: Op[]; presence?: string[] }[]) {
 }
 
 beforeEach(async () => {
+  // Module-scope sync state outlives a test; reset it or execution order
+  // decides the result.
+  await __resetSyncForTests();
   await Promise.all([...ENTITY_TABLES.map(t => t.clear()), db.outbox.clear(), db.meta.clear()]);
   localStorage.setItem('bullets.token', 'clark.test-token');
   localStorage.setItem('bullets.person', 'clark');
@@ -90,6 +102,36 @@ describe('syncOnce', () => {
 
     // 'first' was acked; 'second' must survive to the next round.
     expect((await pending()).map(o => o.opId)).toEqual(['second']);
+  });
+
+  it('runs one extra pass for a write that landed mid-request', async () => {
+    /**
+     * The promise this keeps: a tap during an in-flight request reaches the
+     * other phone on the next pass, not a whole poll interval later. Without
+     * the rerun the request is dropped at the door and the change sits on this
+     * device looking saved — the exact shape of "status changes are not
+     * sticking cross devices".
+     */
+    const hits: string[] = [];
+    let tapped = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        hits.push(url);
+        if (url.includes('/api/sync') && !tapped) {
+          tapped = true;
+          // The tap, landing while this very request is open.
+          void syncOnce();
+        }
+        return new Response(JSON.stringify({ seq: 1, ops: [], presence: [] }), { status: 200 });
+      }),
+    );
+
+    startSync();
+
+    await vi.waitFor(() =>
+      expect(hits.filter(u => u.includes('/api/sync'))).toHaveLength(2),
+    );
   });
 
   it('keeps pulling while pages come back full, so a backlog is not stranded', async () => {

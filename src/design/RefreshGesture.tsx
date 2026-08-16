@@ -67,6 +67,14 @@ export function RefreshGesture({
   const wasArmed = useRef(false);
 
   const [label, setLabel] = useState<Label | null>(null);
+  /**
+   * The armed state is the ONE thing worth a re-render during the drag.
+   * Everything else rides motion values off the compositor, but "let go now"
+   * has to be readable — the haptic alone tells you something happened without
+   * telling you what it was, and on a phone in a pocket-warm hand the buzz is
+   * easy to miss entirely.
+   */
+  const [armed, setArmed] = useState(false);
 
   // The pill mirrors the content until it is detached to hold a result.
   useMotionValueEvent(travel, 'change', v => {
@@ -106,6 +114,7 @@ export function RefreshGesture({
     pointerId.current = null;
     gesture.current = idle();
     wasArmed.current = false;
+    setArmed(false);
   };
 
   const settleBack = () => {
@@ -154,8 +163,11 @@ export function RefreshGesture({
         // The list cannot scroll while we own it.
         if (e.cancelable) e.preventDefault();
         travel.set(next.travel);
-        if (next.armed && !wasArmed.current) void tapLight();
-        wasArmed.current = next.armed;
+        if (next.armed !== wasArmed.current) {
+          if (next.armed) void tapLight();
+          wasArmed.current = next.armed;
+          setArmed(next.armed);
+        }
       }
     };
 
@@ -191,6 +203,7 @@ export function RefreshGesture({
 
     // Freeze the local answer at the moment of commit so it cannot tick.
     const frozen = localTruth(syncState(), Date.now());
+    // Two lines: what is happening, and the local answer read on the way down.
     setLabel({ l1: 'Syncing', l2: frozen, dot: 'var(--incoming)' });
 
     animate(travel, restPx.current, reduced ? { duration: 0.01 } : fling);
@@ -224,7 +237,11 @@ export function RefreshGesture({
     }, RESULT_HOLD);
   };
 
-  const shown = label ?? { l1: 'Pull to sync', l2: ' ', dot: 'var(--ink-3)' };
+  const shown =
+    label ??
+    (armed
+      ? { l1: 'Release to sync', l2: ' ', dot: 'var(--ink)' }
+      : { l1: 'Pull to sync', l2: ' ', dot: 'var(--ink-3)' });
 
   return (
     // pointerdown is a React prop so ONLY motion.main's subtree can arm the

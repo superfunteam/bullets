@@ -92,17 +92,52 @@ async function cursor(): Promise<number> {
  * and running it HERE fires this tab's Dexie events and re-renders.
  */
 let appliedThrough = 0;
-
 let rerunAfterFlight = false;
+/** The current pass, so a test can wait for one it did not start. */
+let settled: Promise<void> | null = null;
 
-export async function syncOnce(): Promise<void> {
+/**
+ * Tests only: return this module to its boot state and WAIT for it.
+ *
+ * Two things outlive a test here. appliedThrough is a floor that lives as long
+ * as the tab — right in the app, poison in a suite, where each test inherited
+ * the previous one's cursor. Worse, the post-flight rerun is a floating
+ * promise: it is deliberately not awaited, so it ran on into the NEXT test,
+ * held inFlight, and made that test's syncOnce return at the door having done
+ * nothing. That is why different tests failed on different runs.
+ *
+ * Awaiting is the whole point — clearing the flags without draining the
+ * in-flight pass would just move the race.
+ */
+export async function __resetSyncForTests(): Promise<void> {
+  // First, so nothing can schedule another rerun behind us.
+  stopSync();
+  rerunAfterFlight = false;
+  // A rerun can chain one more pass; drain until the module is genuinely idle.
+  while (settled) await settled.catch(() => {});
+  appliedThrough = 0;
+  inFlight = false;
+}
+
+export function syncOnce(): Promise<void> {
   if (inFlight) {
     // A wake or a local write landed mid-request. Dropping it silently means
     // the change waits a full poll interval; run one extra pass instead.
     rerunAfterFlight = true;
-    return;
+    return Promise.resolve();
   }
+  const run = pass();
+  // Tracked separately from what we hand back: callers must keep seeing a
+  // rejection, while the drain hook must never become an unhandled one.
+  const tracked: Promise<void> = run.catch(() => {}).finally(() => {
+    if (settled === tracked) settled = null;
+  });
+  settled = tracked;
+  return run;
+}
 
+/** One pass: mint if needed, push the outbox, then page the pull to the end. */
+async function pass(): Promise<void> {
   // A device that signed in offline has an identity but no token. Retrying here
   // rather than giving up is what stops sync from silently never running.
   const token = await ensureToken();
