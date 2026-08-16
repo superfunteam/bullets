@@ -55,8 +55,15 @@ beforeEach(async () => {
   setPace('idle', null);
 });
 
-afterEach(() => {
-  stopSync();
+afterEach(async () => {
+  /**
+   * Drain BEFORE the stub comes off. A pass left in flight by the test that
+   * just ended must finish against the FAKE server; unstub first and it
+   * resumes against the real network, where it hangs on the 15s abort holding
+   * inFlight, and the next test times out instead of running. That reads as a
+   * failure in an innocent test, which is exactly how this hid.
+   */
+  await __resetSyncForTests();
   vi.unstubAllGlobals();
 });
 

@@ -113,9 +113,18 @@ export async function __resetSyncForTests(): Promise<void> {
   // First, so nothing can schedule another rerun behind us.
   stopSync();
   rerunAfterFlight = false;
-  // A rerun can chain one more pass; drain until the module is genuinely idle.
-  while (settled) await settled.catch(() => {});
+  /**
+   * A rerun can chain one more pass; drain until the module is genuinely idle.
+   * Bounded, because an unsettled pass here is already broken and blocking
+   * forever would turn one bad test into a whole file of timeouts — the exact
+   * cascade this reset exists to prevent. stopSync() above means nothing new
+   * can start, so in practice this resolves in microtasks.
+   */
+  for (let i = 0; settled && i < 50; i++) {
+    await Promise.race([settled, new Promise(r => setTimeout(r, 20))]).catch(() => {});
+  }
   appliedThrough = 0;
+  settled = null;
   inFlight = false;
 }
 
