@@ -25,7 +25,7 @@ const INTERVAL: Record<Pace, number> = {
 };
 
 /** Matches MAX_OPS_PER_PULL in netlify/functions/sync.mts. */
-const PAGE_SIZE = 2000;
+export const PAGE_SIZE = 2000;
 
 export type SyncState = {
   /** 'syncing' only shows after a beat, so a healthy sync never flickers. */

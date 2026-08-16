@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { db, ENTITY_TABLES } from '../data/db';
 import { enqueue, pending } from '../data/outbox';
 import {
+  PAGE_SIZE,
   __resetSyncForTests,
   setPace,
   startSync,
@@ -23,6 +24,16 @@ const op = (over: Partial<Op> = {}): Op => ({
   actor: 'clark',
   ...over,
 });
+
+/**
+ * The two paged tests really do push a full PAGE_SIZE page through
+ * fake-indexeddb — ~2s and ~3.4s on a fast laptop, which sits close enough to
+ * vitest's 5s default that a slower CI runner tips over and reports a timeout.
+ * That is what turned CI red, and it looked like a flake because whichever test
+ * crossed the line varied. The work is real, so give these two room rather than
+ * loosening the default and blunting hang detection for the other 243.
+ */
+const PAGED_TIMEOUT = 30_000;
 
 /** Stub /api/sync with a queue of canned responses, recording each request. */
 function stubSync(pages: { seq: number; ops: Op[]; presence?: string[] }[]) {
@@ -142,7 +153,10 @@ describe('syncOnce', () => {
   });
 
   it('keeps pulling while pages come back full, so a backlog is not stranded', async () => {
-    const full = Array.from({ length: 2000 }, (_, i) =>
+    // PAGE_SIZE, not a copy of it: a full page is what makes the client ask
+    // again, so a hardcoded 2000 would quietly stop testing paging the day
+    // that constant moved — and still pass.
+    const full = Array.from({ length: PAGE_SIZE }, (_, i) =>
       op({ opId: `r${i}`, entityId: `b${i}`, ts: 10 + i, actor: 'angie' }),
     );
     const calls = stubSync([
@@ -155,11 +169,11 @@ describe('syncOnce', () => {
     expect(calls.length).toBe(2);
     expect((await db.meta.get('cursor'))?.value).toBe(2001);
     expect(await db.bullets.get('tail')).toBeDefined();
-  });
+  }, PAGED_TIMEOUT);
 
   it('sends the outbox only on the first request of a paged pull', async () => {
     await enqueue([op({ opId: 'only-once' })]);
-    const full = Array.from({ length: 2000 }, (_, i) =>
+    const full = Array.from({ length: PAGE_SIZE }, (_, i) =>
       op({ opId: `x${i}`, entityId: `bb${i}`, ts: 10 + i, actor: 'angie' }),
     );
     const calls = stubSync([
@@ -171,7 +185,7 @@ describe('syncOnce', () => {
 
     expect(calls[0].ops).toHaveLength(1);
     expect(calls[1].ops).toHaveLength(0);
-  });
+  }, PAGED_TIMEOUT);
 
   it('mints a token on demand rather than silently doing nothing', async () => {
     // The bug this guards: a device that signed in while offline had an
